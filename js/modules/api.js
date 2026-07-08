@@ -76,36 +76,79 @@ const API = {
       try {
         const cred = await FirebaseApp.auth.createUserWithEmailAndPassword(email, password);
         const uid = cred.user.uid;
-        const profile = { name, email, phone, addresses: [], createdAt: new Date().toISOString() };
+        const profile = {
+          name,
+          email,
+          phone,
+          addresses: [],
+          emailVerified: true,
+          createdAt: new Date().toISOString()
+        };
         await FirebaseApp.collections.users().doc(uid).set(profile);
         await API.loyalty.initAccount(uid);
-        API.user._current = { id: uid, ...profile };
+        API.user._current = { id: uid, ...profile, emailVerified: true };
         return { success: true, data: API.user._current };
       } catch (e) {
-        return { success: false, error: e.message || 'Registration failed' };
+        const message = e.code === 'auth/email-already-in-use'
+          ? 'This email is already registered. Try logging in instead.'
+          : (e.message || 'Registration failed');
+        return { success: false, error: message };
       }
     },
 
     async login(email, password) {
       try {
         const cred = await FirebaseApp.auth.signInWithEmailAndPassword(email, password);
-        const uid = cred.user.uid;
-
-        const adminDoc = await FirebaseApp.collections.admins().doc(uid).get();
-        if (adminDoc.exists) {
-          API.admin._current = { id: uid, email: cred.user.email, ...adminDoc.data() };
-          return { success: true, data: API.admin._current };
-        }
-
-        const profileDoc = await FirebaseApp.collections.users().doc(uid).get();
-        API.user._current = profileDoc.exists
-          ? { id: uid, email: cred.user.email, ...profileDoc.data() }
-          : { id: uid, email: cred.user.email, name: '', addresses: [] };
-        await API.cart.mergeGuestCart(uid);
-        return { success: true, data: API.user._current };
+        return API.user._finalizeLogin(cred.user);
       } catch (e) {
         return { success: false, error: 'Invalid email or password' };
       }
+    },
+
+    async loginWithGoogle() {
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        const cred = await FirebaseApp.auth.signInWithPopup(provider);
+        const uid = cred.user.uid;
+        const profileDoc = await FirebaseApp.collections.users().doc(uid).get();
+
+        if (!profileDoc.exists) {
+          const profile = {
+            name: cred.user.displayName || '',
+            email: cred.user.email,
+            phone: cred.user.phoneNumber || '',
+            addresses: [],
+            emailVerified: true,
+            provider: 'google',
+            createdAt: new Date().toISOString()
+          };
+          await FirebaseApp.collections.users().doc(uid).set(profile);
+          await API.loyalty.initAccount(uid);
+        }
+
+        return API.user._finalizeLogin(cred.user);
+      } catch (e) {
+        if (e.code === 'auth/popup-closed-by-user') {
+          return { success: false, error: 'Google sign-in was cancelled' };
+        }
+        return { success: false, error: e.message || 'Google sign-in failed' };
+      }
+    },
+
+    async _finalizeLogin(firebaseUser) {
+      const uid = firebaseUser.uid;
+      const adminDoc = await FirebaseApp.collections.admins().doc(uid).get();
+      if (adminDoc.exists) {
+        API.admin._current = { id: uid, email: firebaseUser.email, ...adminDoc.data() };
+        return { success: true, data: API.admin._current };
+      }
+
+      const profileDoc = await FirebaseApp.collections.users().doc(uid).get();
+      API.user._current = profileDoc.exists
+        ? { id: uid, email: firebaseUser.email, ...profileDoc.data() }
+        : { id: uid, email: firebaseUser.email, name: firebaseUser.displayName || '', addresses: [] };
+      await API.cart.mergeGuestCart(uid);
+      return { success: true, data: API.user._current };
     },
 
     async logout() {

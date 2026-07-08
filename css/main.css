@@ -131,6 +131,27 @@ h3 { font-size: 1.15rem; }
 }
 .form-error { color: var(--color-error); font-size: 0.85rem; margin-top: 0.25rem; }
 
+.password-field { position: relative; }
+.password-field input { padding-right: 2.75rem; }
+.password-toggle {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  color: var(--color-text-muted);
+  line-height: 0;
+  border-radius: var(--radius-sm);
+}
+.password-toggle:hover { color: var(--color-primary); }
+.password-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* Top Bar */
 .top-bar {
   background: var(--color-primary-dark);

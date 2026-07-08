@@ -400,6 +400,55 @@
 .auth-card .btn { width: 100%; margin-top: 0.5rem; }
 .auth-switch { text-align: center; margin-top: 1rem; font-size: 0.9rem; }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.25rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.btn--google {
+  background: #fff;
+  border: 1.5px solid var(--color-border);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+.btn--google:hover { background: #f8f9fa; color: var(--color-text); }
+.btn--google svg { flex-shrink: 0; }
+
+.otp-step h2 {
+  text-align: center;
+  margin-bottom: 0.35rem;
+  color: var(--color-primary);
+  font-size: 1.35rem;
+}
+.otp-step > p { text-align: center; margin-bottom: 1.25rem; }
+.otp-input {
+  text-align: center;
+  letter-spacing: 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.otp-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.otp-actions .btn { margin-top: 0; }
+
 /* Account */
 .account-layout {
   display: grid;
