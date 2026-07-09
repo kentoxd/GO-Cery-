@@ -45,7 +45,7 @@ service cloud.firestore {
     match /admins/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       allow create: if isBootstrapSeed() || isAdmin();
-      allow update, delete: if false;
+      allow update, delete: if isAdmin();
     }
 
     match /users/{userId} {

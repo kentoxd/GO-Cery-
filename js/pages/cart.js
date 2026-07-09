@@ -40,8 +40,9 @@ App.ready().then(async () => {
 
     const deliveryFee = await API.delivery.calculateFee(cart.subtotal, 'mm-north');
     const total = cart.subtotal + deliveryFee;
-    const progress = Math.min(100, (cart.subtotal / CONFIG.freeDeliveryThreshold) * 100);
-    const remaining = Math.max(0, CONFIG.freeDeliveryThreshold - cart.subtotal);
+    const thresholdCentavos = Format.freeDeliveryThresholdCentavos();
+    const progress = Math.min(100, (cart.subtotal / thresholdCentavos) * 100);
+    const remaining = Math.max(0, thresholdCentavos - cart.subtotal);
 
     summaryEl.innerHTML = `
       <h3>Order Summary</h3>

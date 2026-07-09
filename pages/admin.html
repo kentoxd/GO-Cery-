@@ -7,8 +7,143 @@
   <link rel="stylesheet" href="../css/main.css">
   <link rel="stylesheet" href="../css/pages.css">
   <link rel="stylesheet" href="../css/loader.css">
+  <link rel="stylesheet" href="../css/admin.css">
 </head>
 <body>
+
+  <!-- Gate shown while we check auth / role -->
+  <div id="admin-auth-gate" class="admin-gate">
+    <p>Checking access…</p>
+  </div>
+
+  <!-- Everything below is hidden until admin.js confirms role === 'admin' -->
+  <div id="admin-shell" class="admin-shell" hidden>
+
+    <aside class="admin-sidebar">
+      <div class="admin-sidebar__brand">Go! Cery <span>Admin</span></div>
+      <nav class="admin-nav">
+        <button class="admin-nav__item is-active" data-view="dashboard">Dashboard</button>
+        <button class="admin-nav__item" data-view="orders">Orders</button>
+        <button class="admin-nav__item" data-view="catalog">Products</button>
+        <button class="admin-nav__item" data-view="inventory">Inventory</button>
+        <button class="admin-nav__item" data-view="users">Users</button>
+        <button class="admin-nav__item" data-view="cms">Site Content</button>
+        <button class="admin-nav__item" data-view="audit">Audit Log</button>
+      </nav>
+      <button id="admin-logout" class="btn btn--outline admin-sidebar__logout">Log out</button>
+    </aside>
+
+    <main class="admin-main">
+      <section id="view-dashboard" class="admin-view is-active">
+        <h1>Dashboard</h1>
+        <div class="admin-stats-grid" id="admin-stats-grid">
+          <div class="admin-stat-card"><span class="admin-stat-card__label">Total Orders</span><span class="admin-stat-card__value" id="stat-totalOrders">–</span></div>
+          <div class="admin-stat-card"><span class="admin-stat-card__label">Total Revenue</span><span class="admin-stat-card__value" id="stat-totalRevenue">–</span></div>
+          <div class="admin-stat-card"><span class="admin-stat-card__label">Pending Orders</span><span class="admin-stat-card__value" id="stat-pendingOrders">–</span></div>
+          <div class="admin-stat-card"><span class="admin-stat-card__label">Total Products</span><span class="admin-stat-card__value" id="stat-totalProducts">–</span></div>
+          <div class="admin-stat-card admin-stat-card--warn"><span class="admin-stat-card__label">Low Stock Items</span><span class="admin-stat-card__value" id="stat-lowStock">–</span></div>
+        </div>
+      </section>
+
+      <section id="view-orders" class="admin-view">
+        <h1>Orders</h1>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Status</th><th>Placed</th><th>Update Status</th></tr>
+          </thead>
+          <tbody id="orders-table-body">
+            <tr><td colspan="6">Loading orders…</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="view-catalog" class="admin-view">
+        <div class="admin-view__header">
+          <h1>Products</h1>
+          <button id="btn-add-product" class="btn btn--primary">+ Add Product</button>
+        </div>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Name</th><th>Category</th><th>Base Price</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="products-table-body">
+            <tr><td colspan="5">Loading products…</td></tr>
+          </tbody>
+        </table>
+
+        <form id="product-form" class="admin-form" hidden>
+          <h2 id="product-form-title">Add Product</h2>
+          <input type="hidden" id="product-id">
+          <label>Name <input type="text" id="product-name" required></label>
+          <label>Category <input type="text" id="product-category" required></label>
+          <label>Base price (₱) <input type="number" step="0.01" id="product-price" required></label>
+          <label>Status
+            <select id="product-status">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="out_of_stock">Out of Stock</option>
+            </select>
+          </label>
+          <label>Description <textarea id="product-description" rows="3"></textarea></label>
+          <div class="admin-form__actions">
+            <button type="submit" class="btn btn--primary">Save Product</button>
+            <button type="button" id="product-form-cancel" class="btn btn--outline">Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="view-inventory" class="admin-view">
+        <h1>Inventory</h1>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Product</th><th>Variant</th><th>Current Stock</th><th>New Stock</th><th></th></tr>
+          </thead>
+          <tbody id="inventory-table-body">
+            <tr><td colspan="5">Loading inventory…</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="view-users" class="admin-view">
+        <h1>Users</h1>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Email</th><th>Name</th><th>Current Role</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="users-table-body">
+            <tr><td colspan="4">Loading users…</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="view-cms" class="admin-view">
+        <h1>Site Content</h1>
+        <form id="cms-form" class="admin-form">
+          <label>Banner Announcement <input type="text" id="cms-bannerAnnouncement"></label>
+          <label>Delivery Notice <input type="text" id="cms-deliveryNotice"></label>
+          <label>Home Subtitle <input type="text" id="cms-homeSubtitle"></label>
+          <label>Cut-off Time Message <input type="text" id="cms-cutOffTimeMsg"></label>
+          <div class="admin-form__actions">
+            <button type="submit" class="btn btn--primary">Save Content</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="view-audit" class="admin-view">
+        <h1>Audit Log</h1>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Action</th><th>Detail</th><th>Performed By</th><th>Timestamp</th></tr>
+          </thead>
+          <tbody id="audit-table-body">
+            <tr><td colspan="4">Loading audit log…</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>

@@ -14,6 +14,7 @@ App.ready().then(async () => {
   }
 
   let step = 1;
+  let paymongoPublicKey = null;
   let checkoutData = {
     addressId: user.addresses?.[0]?.id || null,
     zoneId: CONFIG.deliveryZones[0].id,
@@ -25,11 +26,20 @@ App.ready().then(async () => {
     freeShip: false
   };
 
+  const paymentConfig = await API.payment.getConfig();
+  if (paymentConfig.success) {
+    paymongoPublicKey = paymentConfig.data.publicKey;
+  }
+
   function renderSteps() {
     const steps = ['Address', 'Delivery', 'Payment', 'Review'];
     DOM.$('#checkout-steps').innerHTML = steps.map((s, i) =>
       `<div class="checkout-step ${i + 1 === step ? 'active' : ''} ${i + 1 < step ? 'done' : ''}">${i + 1}. ${s}</div>`
     ).join('');
+  }
+
+  function isOnlinePayment(method) {
+    return method !== 'cod';
   }
 
   async function renderPanel() {
@@ -50,7 +60,7 @@ App.ready().then(async () => {
           <div class="form-group"><label>Street Address</label><input name="street" required></div>
           <div class="form-group"><label>City / Barangay</label><input name="city" required></div>
           <div class="form-group"><label>Delivery Zone</label>
-            <select name="zoneId">${CONFIG.deliveryZones.map(z => `<option value="${z.id}">${z.name} (${Format.currency(z.fee)})</option>`).join('')}</select>
+            <select name="zoneId">${CONFIG.deliveryZones.map(z => `<option value="${z.id}">${z.name} (${Format.currency(Format.toCentavos(z.fee))})</option>`).join('')}</select>
           </div>
           <button type="submit" class="btn btn--outline btn--sm">Add Address</button>
         </form>
@@ -95,11 +105,27 @@ App.ready().then(async () => {
     }
 
     if (step === 3) {
+      const onlineMethods = CONFIG.paymentMethods.filter(m => m.id !== 'cod');
+      const codAvailable = CONFIG.paymentMethods.find(m => m.id === 'cod');
       panel.innerHTML = `
         <h3>Payment Method</h3>
-        <div class="payment-options">${CONFIG.paymentMethods.map(m => `
-          <label class="payment-option"><input type="radio" name="payment" value="${m.id}" ${checkoutData.paymentMethod === m.id ? 'checked' : ''}> ${m.icon} ${m.name}</label>
-        `).join('')}</div>
+        <div class="payment-options">${CONFIG.paymentMethods.map(m => {
+          const disabled = isOnlinePayment(m.id) && !paymongoPublicKey;
+          return `<label class="payment-option ${disabled ? 'disabled' : ''}">
+            <input type="radio" name="payment" value="${m.id}" ${checkoutData.paymentMethod === m.id ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+            ${m.icon} ${m.name}${disabled ? ' (unavailable)' : ''}
+          </label>`;
+        }).join('')}</div>
+        ${!paymongoPublicKey ? '<p style="color:var(--color-text-muted);font-size:0.9rem;margin-top:0.5rem">Online payments require the API server. COD is still available.</p>' : ''}
+        <div id="card-fields" style="display:${checkoutData.paymentMethod === 'card' ? 'block' : 'none'};margin-top:1rem">
+          <div class="form-group"><label>Card Number</label><input id="card-number" placeholder="4571 7360 0000 0008" maxlength="19"></div>
+          <div style="display:flex;gap:0.75rem">
+            <div class="form-group" style="flex:1"><label>Exp Month</label><input id="card-exp-month" placeholder="12" maxlength="2"></div>
+            <div class="form-group" style="flex:1"><label>Exp Year</label><input id="card-exp-year" placeholder="2028" maxlength="4"></div>
+            <div class="form-group" style="flex:1"><label>CVC</label><input id="card-cvc" placeholder="123" maxlength="4"></div>
+          </div>
+          <p style="font-size:0.85rem;color:var(--color-text-muted)">Sandbox test card: 4571 7360 0000 0008</p>
+        </div>
         <div class="form-group" style="margin-top:1rem"><label>Promo Code</label>
           <div style="display:flex;gap:0.5rem"><input id="promo-input" placeholder="Enter code"><button class="btn btn--outline btn--sm" id="apply-promo">Apply</button></div>
         </div>
@@ -109,7 +135,11 @@ App.ready().then(async () => {
         </div>`;
 
       DOM.$$('input[name="payment"]').forEach(r => {
-        r.addEventListener('change', () => { checkoutData.paymentMethod = r.value; });
+        r.addEventListener('change', () => {
+          checkoutData.paymentMethod = r.value;
+          const cardFields = DOM.$('#card-fields');
+          if (cardFields) cardFields.style.display = r.value === 'card' ? 'block' : 'none';
+        });
       });
 
       DOM.$('#apply-promo').addEventListener('click', () => {
@@ -149,29 +179,83 @@ App.ready().then(async () => {
         const btn = DOM.$('#place-order');
         btn.disabled = true;
         btn.textContent = 'Processing…';
-        const paymentResult = await API.payment.process(checkoutData.paymentMethod, total);
-        if (paymentResult.success) {
-          const order = await API.order.create({
-            userId: user.id,
-            userName: user.name,
-            items: cart.items.map(i => ({
-              productId: i.productId, variantId: i.variantId, quantity: i.quantity,
-              name: i.product.name, unit: i.variant.unit, price: i.variant.price, lineTotal: i.lineTotal
-            })),
-            subtotal: cart.subtotal,
-            discount: checkoutData.discount,
-            deliveryFee,
-            total,
-            address,
-            zone: zone?.name,
-            deliveryDate: checkoutData.deliveryDate,
-            deliverySlot: slot?.label,
-            paymentMethod: payment?.name,
-            transactionId: paymentResult.data.transactionId,
-            promoCode: checkoutData.promoCode
-          });
-          await API.cart.clear(user.id);
-          window.location.href = `orders.html?id=${order.data.id}&success=1`;
+
+        const orderPayload = {
+          userId: user.id,
+          userName: user.name,
+          items: cart.items.map(i => ({
+            productId: i.productId, variantId: i.variantId, quantity: i.quantity,
+            name: i.product.name, unit: i.variant.unit, price: i.variant.price, lineTotal: i.lineTotal
+          })),
+          subtotal: cart.subtotal,
+          discount: checkoutData.discount,
+          deliveryFee,
+          total,
+          address,
+          zone: zone?.name,
+          deliveryDate: checkoutData.deliveryDate,
+          deliverySlot: slot?.label,
+          paymentMethod: payment?.name,
+          promoCode: checkoutData.promoCode
+        };
+
+        try {
+          if (isOnlinePayment(checkoutData.paymentMethod)) {
+            if (!paymongoPublicKey) {
+              Components.toast('Online payment not configured', 'error');
+              btn.disabled = false;
+              btn.textContent = 'Place Order';
+              return;
+            }
+
+            const order = await API.order.create(orderPayload, { awaitingPayment: true });
+            const intentResult = await API.payment.createIntent(order.data.id);
+            if (!intentResult.success) {
+              Components.toast(intentResult.error || 'Payment setup failed', 'error');
+              btn.disabled = false;
+              btn.textContent = 'Place Order';
+              return;
+            }
+
+            const billing = { name: user.name, email: user.email };
+            const returnUrl = `${window.location.origin}${window.location.pathname.replace('checkout.html', 'orders.html')}?id=${order.data.id}&payment=return`;
+
+            if (checkoutData.paymentMethod === 'card') {
+              const card = {
+                number: DOM.$('#card-number')?.value || '4571736000000008',
+                expMonth: DOM.$('#card-exp-month')?.value || '12',
+                expYear: DOM.$('#card-exp-year')?.value || '2028',
+                cvc: DOM.$('#card-cvc')?.value || '123'
+              };
+              await API.payment.processOnline(paymongoPublicKey, {
+                paymentIntentId: intentResult.data.paymentIntentId,
+                clientKey: intentResult.data.clientKey,
+                method: 'card',
+                card,
+                billing,
+                returnUrl
+              });
+            } else {
+              await API.payment.processOnline(paymongoPublicKey, {
+                paymentIntentId: intentResult.data.paymentIntentId,
+                clientKey: intentResult.data.clientKey,
+                method: checkoutData.paymentMethod,
+                billing,
+                returnUrl
+              });
+            }
+
+            await API.cart.clear(user.id);
+            window.location.href = `orders.html?id=${order.data.id}&success=1`;
+          } else {
+            const order = await API.order.create(orderPayload);
+            await API.cart.clear(user.id);
+            window.location.href = `orders.html?id=${order.data.id}&success=1`;
+          }
+        } catch (err) {
+          Components.toast(err.message || 'Checkout failed', 'error');
+          btn.disabled = false;
+          btn.textContent = 'Place Order';
         }
       });
     }

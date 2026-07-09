@@ -56,7 +56,16 @@ const FirebaseApp = {
     const batch = this.db.batch();
 
     SeedData.products.forEach(p => {
-      batch.set(this.db.collection('products').doc(p.id), p);
+      const product = CONFIG.pricesInCentavos
+        ? {
+            ...p,
+            variants: p.variants.map(v => ({
+              ...v,
+              price: v.price < 10000 ? v.price * 100 : v.price
+            }))
+          }
+        : p;
+      batch.set(this.db.collection('products').doc(p.id), product);
     });
 
     SeedData.reviews.forEach(r => {

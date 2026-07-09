@@ -17,7 +17,7 @@ const Components = {
               ? `🕐 Order before 7:30 PM for delivery on ${Format.date(deliveryDate)}`
               : `⏰ Cut-off passed — earliest delivery: ${Format.date(deliveryDate)}`}
           </span>
-          <span class="top-bar__promo">Free delivery on orders ${Format.currency(CONFIG.freeDeliveryThreshold)}+</span>
+          <span class="top-bar__promo">Free delivery on orders ${Format.configCurrency(CONFIG.freeDeliveryThreshold)}+</span>
         </div>
       </div>
       <header class="header">

@@ -49,6 +49,12 @@ const API = {
     },
 
     async updateProduct(id, updates) {
+      if (CONFIG.pricesInCentavos && updates.variants) {
+        updates.variants = updates.variants.map(v => ({
+          ...v,
+          price: Number.isInteger(v.price) && v.price > 1000 ? v.price : Format.toCentavos(v.price)
+        }));
+      }
       await FirebaseApp.collections.products().doc(id).update(updates);
       const doc = await FirebaseApp.collections.products().doc(id).get();
       const product = { id: doc.id, ...doc.data() };
@@ -59,6 +65,12 @@ const API = {
     async createProduct(product) {
       const ref = FirebaseApp.collections.products().doc();
       product.id = ref.id;
+      if (CONFIG.pricesInCentavos && product.variants) {
+        product.variants = product.variants.map(v => ({
+          ...v,
+          price: Number.isInteger(v.price) && v.price > 1000 ? v.price : Format.toCentavos(v.price)
+        }));
+      }
       await ref.set(product);
       return { success: true, data: product };
     },
@@ -183,6 +195,14 @@ const API = {
     async getAll() {
       const snap = await FirebaseApp.collections.users().get();
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+
+    async updateRole(uid, role) {
+      const result = await Http.post(`/admin/users/${uid}/role`, { role });
+      if (result.success && result.tokenRefreshRequired && FirebaseApp.auth.currentUser) {
+        await FirebaseApp.auth.currentUser.getIdToken(true);
+      }
+      return result;
     }
   },
 
@@ -270,18 +290,24 @@ const API = {
   },
 
   order: {
-    async create(orderData) {
+    async create(orderData, options = {}) {
+      const isOnlinePayment = options.awaitingPayment === true;
       const ref = FirebaseApp.collections.orders().doc();
+      const initialStatus = isOnlinePayment ? 'Awaiting Payment' : 'Pending';
       const order = {
         id: ref.id,
         ...orderData,
-        status: 'Pending',
-        statusHistory: [{ status: 'Pending', timestamp: new Date().toISOString() }],
+        status: initialStatus,
+        paymentStatus: isOnlinePayment ? 'pending' : (orderData.paymentMethod === 'Cash on Delivery' ? 'pending_collection' : 'paid'),
+        inventoryDeducted: !isOnlinePayment,
+        statusHistory: [{ status: initialStatus, timestamp: new Date().toISOString() }],
         createdAt: new Date().toISOString()
       };
       await ref.set(order);
-      await API.inventory.deduct(order.items);
-      await API.loyalty.earnPoints(orderData.userId, orderData.total);
+      if (!isOnlinePayment) {
+        await API.inventory.deduct(order.items);
+        await API.loyalty.earnPoints(orderData.userId, orderData.total);
+      }
       API._emit('order:created', order);
       return { success: true, data: order };
     },
@@ -309,15 +335,11 @@ const API = {
     },
 
     async updateStatus(id, status, note = '') {
-      const ref = FirebaseApp.collections.orders().doc(id);
-      const doc = await ref.get();
-      if (!doc.exists) return { success: false, error: 'Order not found' };
-      const data = doc.data();
-      const statusHistory = [...(data.statusHistory || []), { status, timestamp: new Date().toISOString(), note }];
-      await ref.update({ status, statusHistory });
-      const updated = { id, ...data, status, statusHistory };
-      API._emit('order:updated', updated);
-      return { success: true, data: updated };
+      const result = await Http.patch(`/admin/orders/${id}/status`, { status, note });
+      if (result.success) {
+        API._emit('order:updated', result.data);
+      }
+      return result;
     }
   },
 
@@ -369,11 +391,16 @@ const API = {
     async calculateFee(subtotal, zoneId) {
       const user = API.user.getCurrent();
       const loyalty = user ? await API.loyalty.getAccount(user.id) : null;
-      if (subtotal >= CONFIG.freeDeliveryThreshold) return 0;
+      const threshold = CONFIG.pricesInCentavos
+        ? Format.toCentavos(CONFIG.freeDeliveryThreshold)
+        : CONFIG.freeDeliveryThreshold;
+      const vipThreshold = CONFIG.pricesInCentavos ? Format.toCentavos(2000) : 2000;
+      if (subtotal >= threshold) return 0;
       if (loyalty?.tier === 'gold') return 0;
-      if (loyalty?.tier === 'vip' && subtotal >= 2000) return 0;
+      if (loyalty?.tier === 'vip' && subtotal >= vipThreshold) return 0;
       const zone = CONFIG.deliveryZones.find(z => z.id === zoneId);
-      return zone ? zone.fee : CONFIG.defaultDeliveryFee;
+      const fee = zone ? zone.fee : CONFIG.defaultDeliveryFee;
+      return CONFIG.pricesInCentavos ? Format.toCentavos(fee) : fee;
     },
 
     isBeforeCutoff() {
@@ -385,20 +412,40 @@ const API = {
   },
 
   payment: {
-    process(method, amount) {
-      return new Promise(resolve => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            data: {
-              transactionId: 'TXN-' + Date.now(),
-              method,
-              amount,
-              status: method === 'cod' ? 'pending_collection' : 'completed'
-            }
-          });
-        }, 800);
+    async getConfig() {
+      return Http.get('/payments/config');
+    },
+
+    async createIntent(orderId) {
+      return Http.post('/payments/intent', { orderId });
+    },
+
+    async processOnline(publicKey, { paymentIntentId, clientKey, method, card, billing, returnUrl }) {
+      const pmType = method === 'gcash' ? 'gcash' : method === 'maya' ? 'paymaya' : 'card';
+      const pm = await PayMongoClient.createPaymentMethod(publicKey, {
+        type: pmType,
+        card: pmType === 'card' ? card : undefined,
+        billing
       });
+      const attached = await PayMongoClient.attachPaymentMethod(publicKey, {
+        paymentIntentId,
+        paymentMethodId: pm.id,
+        clientKey,
+        returnUrl
+      });
+
+      const redirectUrl = attached.attributes?.next_action?.redirect?.url;
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+        return { success: true, data: { redirecting: true } };
+      }
+
+      const piStatus = attached.attributes?.status;
+      if (piStatus === 'succeeded' || piStatus === 'awaiting_payment_method') {
+        return { success: true, data: { status: piStatus, paymentIntentId } };
+      }
+
+      return { success: true, data: attached };
     }
   },
 
@@ -420,7 +467,8 @@ const API = {
       const doc = await ref.get();
       let account = doc.exists ? doc.data() : { points: 0, tier: 'regular', referrals: 0 };
       const multiplier = account.tier === 'gold' ? 3 : account.tier === 'vip' ? 2 : 1;
-      account.points += Math.floor(orderTotal / 100) * multiplier;
+      const pesoTotal = CONFIG.pricesInCentavos ? orderTotal / 100 : orderTotal;
+      account.points += Math.floor(pesoTotal / 100) * multiplier;
       if (account.points >= 2000) account.tier = 'gold';
       else if (account.points >= 500) account.tier = 'vip';
       await ref.set(account);
@@ -510,10 +558,14 @@ const API = {
     },
 
     async logAction(action, details) {
+      const current = API.admin.getCurrent();
       await FirebaseApp.collections.auditLogs().add({
         action,
         details,
-        admin: API.admin.getCurrent()?.name,
+        actorUid: current?.id || null,
+        actorEmail: current?.email || null,
+        admin: current?.name || current?.email || null,
+        target: details?.orderId || details?.productId || details?.uid || null,
         timestamp: new Date().toISOString()
       });
     },
@@ -526,14 +578,17 @@ const API = {
       ]);
       const orders = ordersSnap.docs.map(d => d.data());
       const products = productsSnap.docs.map(d => d.data());
-      const revenue = orders.filter(o => o.status !== 'Cancelled').reduce((s, o) => s + o.total, 0);
+      const threshold = CONFIG.lowStockThreshold || 20;
+      const revenue = orders
+        .filter(o => o.status !== 'Cancelled' && o.status !== 'Refunded')
+        .reduce((s, o) => s + o.total, 0);
       return {
         totalOrders: orders.length,
         totalRevenue: revenue,
         totalProducts: products.length,
         totalUsers: usersSnap.size,
-        pendingOrders: orders.filter(o => o.status === 'Pending').length,
-        lowStock: products.filter(p => p.variants.some(v => v.stock < 10)).length
+        pendingOrders: orders.filter(o => o.status === 'Pending' || o.status === 'Awaiting Payment').length,
+        lowStock: products.filter(p => p.variants.some(v => v.stock < threshold)).length
       };
     }
   },

@@ -3,10 +3,42 @@
  */
 const Format = {
   currency(amount) {
-    return `${CONFIG.currencySymbol}${Number(amount).toLocaleString('en-PH', {
+    const pesos = CONFIG.pricesInCentavos ? Number(amount) / 100 : Number(amount);
+    return `${CONFIG.currencySymbol}${pesos.toLocaleString('en-PH', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
+  },
+
+  /** CONFIG fees/thresholds are stored in pesos; convert when pricesInCentavos is enabled */
+  configCurrency(pesosAmount) {
+    const amount = CONFIG.pricesInCentavos
+      ? this.toCentavos(pesosAmount)
+      : Number(pesosAmount);
+    return this.currency(amount);
+  },
+
+  freeDeliveryThresholdCentavos() {
+    return CONFIG.pricesInCentavos
+      ? this.toCentavos(CONFIG.freeDeliveryThreshold)
+      : CONFIG.freeDeliveryThreshold;
+  },
+
+  toCentavos(pesos) {
+    return Math.round(Number(pesos) * 100);
+  },
+
+  /** Normalize a variant price to integer centavos for storage */
+  normalizePrice(price) {
+    const n = Math.round(Number(price));
+    if (!Number.isFinite(n) || n < 0) {
+      throw new Error('Invalid price');
+    }
+    return n;
+  },
+
+  fromCentavos(centavos) {
+    return CONFIG.pricesInCentavos ? Number(centavos) / 100 : Number(centavos);
   },
 
   unitLabel(unit) {
