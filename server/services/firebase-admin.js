@@ -1,42 +1,28 @@
+/**
+ * server/services/firebase-admin.js
+ * Single shared Firebase Admin SDK instance for the whole backend +
+ * the one-off seed script. Never imported by any client-side file.
+ *
+ * Credentials: set GOOGLE_APPLICATION_CREDENTIALS in your .env to the
+ * path of your service account JSON (downloaded from Firebase Console
+ * → Project Settings → Service Accounts → Generate new private key).
+ * Never commit that JSON file — make sure it's in .gitignore.
+ */
+
 const admin = require('firebase-admin');
-const path = require('path');
 
-let db = null;
-let auth = null;
-
-function initFirebaseAdmin() {
-  if (admin.apps.length) {
-    db = admin.firestore();
-    auth = admin.auth();
-    return { db, auth };
-  }
-
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (!credPath) {
-    throw new Error('GOOGLE_APPLICATION_CREDENTIALS is not set in .env');
-  }
-
-  const resolved = path.resolve(credPath);
-  // eslint-disable-next-line import/no-dynamic-require, global-require
-  const serviceAccount = require(resolved);
-
+if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.applicationDefault(),
   });
-
-  db = admin.firestore();
-  auth = admin.auth();
-  return { db, auth };
 }
 
 function getDb() {
-  if (!db) initFirebaseAdmin();
-  return db;
+  return admin.firestore();
 }
 
 function getAuth() {
-  if (!auth) initFirebaseAdmin();
-  return auth;
+  return admin.auth();
 }
 
-module.exports = { initFirebaseAdmin, getDb, getAuth, admin };
+module.exports = { admin, getDb, getAuth };

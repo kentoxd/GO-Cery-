@@ -60,7 +60,7 @@
       await Components.initLayout('');
       DOM.$('#about-text').textContent = await API.cms.getAbout();
       DOM.$('#zones-list').innerHTML = CONFIG.deliveryZones.map(z =>
-        `<li><strong>${z.name}</strong> – Delivery fee: ${Format.configCurrency(z.fee)} (Free above ${Format.configCurrency(CONFIG.freeDeliveryThreshold)})</li>`
+        `<li><strong>${z.name}</strong> – Delivery fee: ${Format.currency(z.fee)} (Free above ${Format.currency(CONFIG.freeDeliveryThreshold)})</li>`
       ).join('');
       DOM.$('#contact-form').addEventListener('submit', e => {
         e.preventDefault();

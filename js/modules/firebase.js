@@ -28,7 +28,6 @@ const FirebaseApp = {
     this.db = firebase.firestore();
     this.auth = firebase.auth();
 
-    await this._seedIfNeeded();
     await this._listenAuth();
 
     return { db: this.db, auth: this.auth };
@@ -56,16 +55,7 @@ const FirebaseApp = {
     const batch = this.db.batch();
 
     SeedData.products.forEach(p => {
-      const product = CONFIG.pricesInCentavos
-        ? {
-            ...p,
-            variants: p.variants.map(v => ({
-              ...v,
-              price: v.price < 10000 ? v.price * 100 : v.price
-            }))
-          }
-        : p;
-      batch.set(this.db.collection('products').doc(p.id), product);
+      batch.set(this.db.collection('products').doc(p.id), p);
     });
 
     SeedData.reviews.forEach(r => {

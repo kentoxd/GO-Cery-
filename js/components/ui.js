@@ -1,9 +1,8 @@
-/**
- * Shared UI Components – Header, Footer, Product Card, Toast
- */
+
 const Components = {
   async renderHeader(activePage = '') {
     const user = API.user.getCurrent();
+    const admin = API.admin.getCurrent();
     const userId = user?.id || null;
     const cart = await API.cart.getEnriched(userId);
     const cutoff = API.delivery.isBeforeCutoff();
@@ -17,7 +16,7 @@ const Components = {
               ? `🕐 Order before 7:30 PM for delivery on ${Format.date(deliveryDate)}`
               : `⏰ Cut-off passed — earliest delivery: ${Format.date(deliveryDate)}`}
           </span>
-          <span class="top-bar__promo">Free delivery on orders ${Format.configCurrency(CONFIG.freeDeliveryThreshold)}+</span>
+          <span class="top-bar__promo">Free delivery on orders ${Format.currency(CONFIG.freeDeliveryThreshold)}+</span>
         </div>
       </div>
       <header class="header">
@@ -41,7 +40,9 @@ const Components = {
             </form>
             ${user
               ? `<a href="${this._root()}pages/account.html" class="header__account" title="${DOM.escapeHtml(user.name)}">👤 ${DOM.escapeHtml(user.name.split(' ')[0])}</a>`
-              : `<a href="${this._root()}pages/login.html" class="header__account">Login</a>`}
+              : admin
+                ? `<a href="${this._root()}pages/admin.html" class="header__account" title="${DOM.escapeHtml(admin.email)}">🛠️ ${DOM.escapeHtml(admin.name || admin.email.split('@')[0])}</a>`
+                : `<a href="${this._root()}pages/login.html" class="header__account">Login</a>`}
             <a href="${this._root()}pages/cart.html" class="header__cart" aria-label="Cart">
               🛒<span class="cart-badge" id="cart-count">${cart.itemCount || ''}</span>
             </a>

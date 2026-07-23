@@ -12,9 +12,6 @@ const CONFIG = {
   orderCutoffHour: 19,
   orderCutoffMinute: 30,
   apiVersion: 'v1',
-  apiBaseUrl: 'http://localhost:3000/api',
-  lowStockThreshold: 20,
-  pricesInCentavos: true,
   storageKeys: {
     users: 'gocery_users',
     currentUser: 'gocery_current_user',
@@ -46,7 +43,6 @@ const CONFIG = {
   ],
   orderStatuses: [
     'Pending',
-    'Awaiting Payment',
     'Confirmed',
     'Preparing',
     'Out for Delivery',
