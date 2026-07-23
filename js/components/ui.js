@@ -112,7 +112,9 @@ const Components = {
     return `
       <article class="product-card ${!inStock ? 'product-card--sold-out' : ''}" data-id="${product.id}">
         <a href="${this._root()}pages/product.html?id=${product.id}" class="product-card__image">
-          <span class="product-emoji">${product.image}</span>
+          ${product.imageUrl
+          ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" class="product-emoji" style="width:100%;height:100%;object-fit:cover" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'product-emoji',textContent:'${product.image}'}))">`
+          : `<span class="product-emoji">${product.image}</span>`}
           ${product.featured ? '<span class="product-card__badge">Suki Pick</span>' : ''}
           ${!inStock ? '<span class="product-card__badge product-card__badge--sold">Sold Out</span>' : ''}
         </a>

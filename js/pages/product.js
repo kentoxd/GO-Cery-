@@ -23,7 +23,9 @@ App.ready().then(async () => {
   function render() {
     const el = DOM.$('#product-detail');
     el.innerHTML = `
-      <div class="product-detail__image">${product.image}</div>
+      <div class="product-detail__image">${product.imageUrl
+        ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:12px" onerror="this.style.display='none'">`
+        : product.image}</div>
       <div class="product-detail__info">
         <span class="product-card__category">${category ? category.icon + ' ' + category.name : ''}</span>
         <h1>${DOM.escapeHtml(product.name)}</h1>

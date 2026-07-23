@@ -23,7 +23,9 @@ App.ready().then(async () => {
 
     itemsEl.innerHTML = cart.items.map(item => `
       <div class="cart-item" data-pid="${item.productId}" data-vid="${item.variantId}">
-        <div class="cart-item__emoji">${item.product.image}</div>
+        <div class="cart-item__emoji">${item.product.imageUrl
+          ? `<img src="${DOM.escapeHtml(item.product.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px" onerror="this.style.display='none'">`
+          : item.product.image}</div>
         <div>
           <div class="cart-item__name">${DOM.escapeHtml(item.product.name)}</div>
           <div class="cart-item__unit">${Format.unitLabel(item.variant.unit)} · ${Format.currency(item.variant.price)} each</div>
