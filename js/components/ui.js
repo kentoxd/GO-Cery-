@@ -28,9 +28,9 @@ const Components = {
             <a href="${this._root()}pages/shop.html" class="${activePage === 'shop' ? 'active' : ''}">Shop</a>
             <a href="${this._root()}pages/faq.html">FAQs</a>
             <a href="${this._root()}pages/about.html">About Us</a>
-            <a href="${this._root()}pages/about.html#delivery">Delivery Areas</a>
+            <a href="${this._root()}pages/blog.html">Recipes</a>
             <a href="${this._root()}pages/contact.html">Contact</a>
-            <a href="https://m.me/gocery" target="_blank" rel="noopener">Messenger Chat</a>
+            <a href="${this._root()}pages/reviews.html">Reviews</a>
           </nav>
           <div class="header__actions">
             <form class="search-form" action="${this._root()}pages/shop.html" method="get">
@@ -76,9 +76,9 @@ const Components = {
             <h4>Help</h4>
             <a href="${this._root()}pages/faq.html">FAQs</a>
             <a href="${this._root()}pages/about.html">About Us</a>
-            <a href="${this._root()}pages/about.html#delivery-areas">Delivery Areas</a>
+            <a href="${this._root()}pages/blog.html">Recipes</a>
             <a href="${this._root()}pages/contact.html">Contact</a>
-            <a href="https://m.me/gocery" target="_blank" rel="noopener">Messenger Chat</a>
+            <a href="${this._root()}pages/reviews.html">Reviews</a>
           </div>
           <div class="footer__newsletter">
             <h4>Suki Newsletter</h4>
@@ -112,7 +112,7 @@ const Components = {
       <article class="product-card ${!inStock ? 'product-card--sold-out' : ''}" data-id="${product.id}">
         <a href="${this._root()}pages/product.html?id=${product.id}" class="product-card__image">
           ${product.imageUrl
-          ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" class="product-emoji" style="width:100%;height:100%;object-fit:cover" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'product-emoji',textContent:'${product.image}'}))">`
+          ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="" class="product-card__photo" style="width:100%;height:100%;object-fit:cover" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="product-emoji" hidden>${product.image}</span>`
           : `<span class="product-emoji">${product.image}</span>`}
           ${product.featured ? '<span class="product-card__badge">Suki Pick</span>' : ''}
           ${!inStock ? '<span class="product-card__badge product-card__badge--sold">Sold Out</span>' : ''}

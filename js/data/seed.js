@@ -46,6 +46,7 @@ const SeedData = {
     pages: {
       about: 'Go! Cery brings the wet market to your doorstep. We partner with trusted palengke vendors across Metro Manila to deliver the freshest produce, seafood, and meat — next day, guaranteed.',
       faq: [
+        { q: 'Do I need an account to place an order?', a: 'Yes. You need to create an account to place orders. Your account also allows you to save your delivery information, manage your orders, and make future purchases faster and more convenient.' },
         { q: 'What areas do you deliver to?', a: 'We deliver to Metro Manila and select areas in Rizal Province. Check your address at checkout.' },
         { q: 'What is the order cut-off time?', a: 'Orders placed before 7:30 PM are delivered the next day. Orders after cut-off are scheduled for the day after.' },
         { q: 'How does the freshness guarantee work?', a: 'If any item doesn\'t meet our freshness standard, contact us within 24 hours of delivery for a full refund on that item.' },

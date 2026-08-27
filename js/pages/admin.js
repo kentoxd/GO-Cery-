@@ -49,6 +49,8 @@ App.ready().then(async () => {
             <a href="?view=inventory" class="${view === 'inventory' ? 'active' : ''}">📋 Inventory</a>
             <a href="?view=users" class="${view === 'users' ? 'active' : ''}">👥 Customers</a>
             <a href="?view=content" class="${view === 'content' ? 'active' : ''}">📝 Site Content</a>
+            <a href="?view=recipes" class="${view === 'recipes' ? 'active' : ''}">🍳 Recipes</a>
+            <a href="?view=reviews" class="${view === 'reviews' ? 'active' : ''}">⭐ Reviews</a>
             <a href="?view=audit" class="${view === 'audit' ? 'active' : ''}">📝 Audit Log</a>
             <a href="#" id="admin-logout">🚪 Logout</a>
             <a href="../index.html">🏠 View Store</a>
@@ -537,6 +539,148 @@ if (view === 'products') {
       });
     });
     }
+  }
+
+  if (view === 'recipes') {
+    const cmsDoc = await FirebaseApp.collections.cms().doc('main').get();
+    const cms = cmsDoc.exists ? cmsDoc.data() : {};
+    const recipes = cms.recipes || cms.blogPosts || [];
+
+    function renderRecipes() {
+      DOM.$('#recipes-table-wrap').innerHTML = `
+        <table class="admin-table">
+          <thead><tr><th>Title</th><th>Category</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody>${recipes.length ? recipes.map((recipe, index) => `
+            <tr>
+              <td>${DOM.escapeHtml(recipe.title || '')}</td>
+              <td>${DOM.escapeHtml(recipe.category || 'Recipes')}</td>
+              <td>${recipe.date ? Format.date(recipe.date) : '—'}</td>
+              <td>
+                <button class="btn btn--outline btn--sm edit-recipe" data-index="${index}">Edit</button>
+                <button class="btn btn--outline btn--sm delete-recipe" data-index="${index}">Delete</button>
+              </td>
+            </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted)">No recipes yet</td></tr>'}</tbody>
+        </table>`;
+      bindRecipeActions();
+    }
+
+    async function saveRecipes() {
+      await FirebaseApp.collections.cms().doc('main').set({ recipes }, { merge: true });
+      await API.admin.logAction('UPDATE_RECIPES', { count: recipes.length });
+      renderRecipes();
+    }
+
+    function openRecipeEditor(index) {
+      const isNew = index === undefined;
+      const recipe = isNew
+        ? { title: '', category: 'Recipes', date: new Date().toISOString().split('T')[0], image: '🍲', excerpt: '', content: '' }
+        : recipes[index];
+      DOM.$('#recipe-editor').hidden = false;
+      DOM.$('#recipe-editor').innerHTML = `
+        <h2>${isNew ? 'Add Recipe' : 'Edit Recipe'}</h2>
+        <div class="form-group"><label>Title</label><input id="re-title" value="${DOM.escapeHtml(recipe.title || '')}" required></div>
+        <div class="form-group"><label>Category</label><input id="re-category" value="${DOM.escapeHtml(recipe.category || 'Recipes')}"></div>
+        <div class="form-group"><label>Date</label><input id="re-date" type="date" value="${DOM.escapeHtml(recipe.date || '')}"></div>
+        <div class="form-group"><label>Image or Emoji</label><input id="re-image" value="${DOM.escapeHtml(recipe.image || '🍲')}" placeholder="Emoji or image URL"></div>
+        <div class="form-group"><label>Short Description</label><textarea id="re-excerpt" rows="2">${DOM.escapeHtml(recipe.excerpt || '')}</textarea></div>
+        <div class="form-group"><label>Recipe Content</label><textarea id="re-content" rows="6">${DOM.escapeHtml(recipe.content || '')}</textarea></div>
+        <p class="form-error" id="re-error"></p>
+        <div class="modal-actions" style="display:flex;gap:0.5rem">
+          <button class="btn btn--primary" id="re-save">Save Recipe</button>
+          <button class="btn btn--outline" id="re-cancel">Cancel</button>
+        </div>`;
+
+      DOM.$('#re-cancel').addEventListener('click', () => { DOM.$('#recipe-editor').hidden = true; });
+      DOM.$('#re-save').addEventListener('click', async () => {
+        const title = DOM.$('#re-title').value.trim();
+        if (!title) { DOM.$('#re-error').textContent = 'Title is required.'; return; }
+        const updated = {
+          id: isNew ? `recipe-${Date.now()}` : recipe.id,
+          title,
+          category: DOM.$('#re-category').value.trim() || 'Recipes',
+          date: DOM.$('#re-date').value,
+          image: DOM.$('#re-image').value.trim() || '🍲',
+          excerpt: DOM.$('#re-excerpt').value.trim(),
+          content: DOM.$('#re-content').value.trim()
+        };
+        if (isNew) recipes.push(updated);
+        else recipes[index] = updated;
+        DOM.$('#recipe-editor').hidden = true;
+        await saveRecipes();
+      });
+    }
+
+    function bindRecipeActions() {
+      DOM.$$('.edit-recipe').forEach(button => button.addEventListener('click', () => openRecipeEditor(parseInt(button.dataset.index, 10))));
+      DOM.$$('.delete-recipe').forEach(button => button.addEventListener('click', async () => {
+        if (!confirm('Delete this recipe?')) return;
+        recipes.splice(parseInt(button.dataset.index, 10), 1);
+        await saveRecipes();
+      }));
+    }
+
+    renderLayout(`
+      <div class="admin-header"><h1>Recipes</h1><button class="btn btn--primary btn--sm" id="add-recipe">+ Add Recipe</button></div>
+      <div id="recipes-table-wrap"></div>
+      <div id="recipe-editor" class="admin-form" hidden></div>`);
+    DOM.$('#add-recipe').addEventListener('click', () => openRecipeEditor());
+    renderRecipes();
+  }
+
+  if (view === 'reviews') {
+    const [reviewsSnap, productsResult] = await Promise.all([
+      FirebaseApp.collections.reviews().get(),
+      API.catalog.getProducts()
+    ]);
+    const products = new Map(productsResult.data.map(product => [product.id, product]));
+    const reviews = reviewsSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+
+    renderLayout(`
+      <div class="admin-header"><h1>Reviews</h1><span>${reviews.length} submitted</span></div>
+      <table class="admin-table">
+        <thead><tr><th>Product</th><th>Customer</th><th>Rating</th><th>Review</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${reviews.length ? reviews.map(review => `
+          <tr>
+            <td>${DOM.escapeHtml(products.get(review.productId)?.name || 'Product')}</td>
+            <td>${DOM.escapeHtml(review.userName || 'Customer')}</td>
+            <td><span class="review-card__rating">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span></td>
+            <td>${DOM.escapeHtml(review.comment || '')}</td>
+            <td>${review.date ? Format.date(review.date) : '—'}</td>
+            <td>${review.verified ? 'Verified Purchase' : 'Unverified'}</td>
+            <td>
+              <button class="btn btn--outline btn--sm edit-review" data-id="${review.id}">Edit</button>
+              <button class="btn btn--outline btn--sm delete-review" data-id="${review.id}">Delete</button>
+            </td>
+          </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--color-text-muted)">No reviews yet</td></tr>'}</tbody>
+      </table>`);
+
+    DOM.$$('.edit-review').forEach(button => button.addEventListener('click', () => {
+      const review = reviews.find(item => item.id === button.dataset.id);
+      if (!review) return;
+      const rating = prompt('Rating from 1 to 5:', review.rating);
+      if (rating === null) return;
+      const parsedRating = parseInt(rating, 10);
+      if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) { Components.toast('Rating must be between 1 and 5', 'error'); return; }
+      const comment = prompt('Review comment:', review.comment || '');
+      if (comment === null) return;
+      API.reviews.update(review.id, { rating: parsedRating, comment: comment.trim() })
+        .then(() => API.admin.logAction('UPDATE_REVIEW', { reviewId: review.id }))
+        .then(() => { Components.toast('Review updated'); window.location.reload(); })
+        .catch(() => Components.toast('Could not update review', 'error'));
+    }));
+    DOM.$$('.delete-review').forEach(button => button.addEventListener('click', async () => {
+      if (!confirm('Delete this review? This cannot be undone.')) return;
+      try {
+        await API.reviews.remove(button.dataset.id);
+        await API.admin.logAction('DELETE_REVIEW', { reviewId: button.dataset.id });
+        Components.toast('Review deleted');
+        window.location.reload();
+      } catch (err) {
+        Components.toast('Could not delete review', 'error');
+      }
+    }));
   }
 
   if (view === 'content') {

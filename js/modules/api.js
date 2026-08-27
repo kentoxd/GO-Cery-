@@ -567,6 +567,16 @@ const API = {
       };
       await ref.set(data);
       return { success: true, data };
+    },
+
+    async update(id, updates) {
+      await FirebaseApp.collections.reviews().doc(id).update(updates);
+      return { success: true };
+    },
+
+    async remove(id) {
+      await FirebaseApp.collections.reviews().doc(id).delete();
+      return { success: true };
     }
   },
 
@@ -584,6 +594,11 @@ const API = {
     async getBlogPosts() {
       const cms = await this._getCms();
       return cms.blogPosts || [];
+    },
+
+    async getRecipes() {
+      const cms = await this._getCms();
+      return cms.recipes || cms.blogPosts || [];
     },
 
     async getFaq() {
