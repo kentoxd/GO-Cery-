@@ -1,6 +1,12 @@
 App.ready().then(async () => {
   await Components.initLayout('home');
 
+  const hero = await API.cms.getHero();
+  const heroTitleEl = DOM.$('#hero-title');
+  const heroSubtitleEl = DOM.$('#hero-subtitle');
+  if (heroTitleEl) heroTitleEl.textContent = hero.heroTitle;
+  if (heroSubtitleEl) heroSubtitleEl.textContent = hero.heroSubtitle;
+
   const banners = await API.cms.getBanners();
   const promoEl = DOM.$('#promo-strip');
   if (promoEl) {

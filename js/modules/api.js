@@ -183,6 +183,43 @@ const API = {
     async getAll() {
       const snap = await FirebaseApp.collections.users().get();
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+
+    /**
+     * Grants/revokes admin access via Firestore (free Spark tier — no Cloud Functions).
+     */
+    async updateRole(uid, role) {
+      const admin = API.admin.getCurrent();
+      if (!admin || admin.role !== 'super_admin') {
+        return { success: false, error: 'Super admin access required' };
+      }
+      if (uid === admin.id) {
+        return { success: false, error: 'You cannot change your own role.' };
+      }
+
+      const VALID_ROLES = ['customer', 'admin', 'super_admin'];
+      if (!VALID_ROLES.includes(role)) {
+        return { success: false, error: `Invalid role. Allowed: ${VALID_ROLES.join(', ')}` };
+      }
+
+      const userDoc = await FirebaseApp.collections.users().doc(uid).get();
+      const userData = userDoc.exists ? userDoc.data() : {};
+      const adminRef = FirebaseApp.collections.admins().doc(uid);
+
+      if (role === 'customer') {
+        await adminRef.delete().catch(() => {});
+      } else {
+        await adminRef.set({
+          email: userData.email || null,
+          name: userData.name || userData.email || null,
+          role
+        });
+      }
+
+      await FirebaseApp.collections.users().doc(uid).set({ role }, { merge: true });
+      await API.admin.logAction('UPDATE_USER_ROLE', { targetEmail: userData.email, newRole: role });
+
+      return { success: true, data: { uid, role } };
     }
   },
 
@@ -270,20 +307,57 @@ const API = {
   },
 
   order: {
-    async create(orderData) {
-      const ref = FirebaseApp.collections.orders().doc();
-      const order = {
-        id: ref.id,
-        ...orderData,
-        status: 'Pending',
-        statusHistory: [{ status: 'Pending', timestamp: new Date().toISOString() }],
-        createdAt: new Date().toISOString()
-      };
-      await ref.set(order);
-      await API.inventory.deduct(order.items);
-      await API.loyalty.earnPoints(orderData.userId, orderData.total);
-      API._emit('order:created', order);
-      return { success: true, data: order };
+    async create({ items, addressId, zoneId, slotId, deliveryDate, paymentMethod, promoCode }) {
+      const user = API.user.getCurrent();
+      if (!user) return { success: false, error: 'You must be logged in to place an order.' };
+
+      const userDoc = await FirebaseApp.collections.users().doc(user.id).get();
+      if (!userDoc.exists) return { success: false, error: 'User profile not found.' };
+      const userData = userDoc.data();
+      const address = (userData.addresses || []).find(a => a.id === addressId);
+      if (!address) return { success: false, error: 'Address not found on your account.' };
+
+      const slot = CONFIG.deliverySlots.find(s => s.id === slotId);
+      if (!slot) return { success: false, error: 'Invalid delivery slot.' };
+
+      try {
+        const pricing = await Pricing.computeOrderPricing({
+          rawItems: items.map(i => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity })),
+          zoneId,
+          userId: user.id,
+          promoCode
+        });
+
+        const isCod = paymentMethod === 'Cash on Delivery' || paymentMethod === 'cod';
+        const ref = FirebaseApp.collections.orders().doc();
+        const order = {
+          id: ref.id,
+          userId: user.id,
+          userName: userData.name || userData.email,
+          items: pricing.items,
+          subtotal: pricing.subtotal,
+          discount: pricing.discount,
+          promoCode: pricing.promoCode,
+          deliveryFee: pricing.deliveryFee,
+          total: pricing.total,
+          address,
+          zone: pricing.zoneName,
+          deliveryDate: deliveryDate || null,
+          deliverySlot: slot.label,
+          paymentMethod,
+          status: 'Pending',
+          paymentStatus: isCod ? 'pending_collection' : 'awaiting_manual_verification',
+          inventoryDeducted: false,
+          statusHistory: [{ status: 'Pending', timestamp: new Date().toISOString() }],
+          createdAt: new Date().toISOString()
+        };
+
+        await ref.set(order);
+        API._emit('order:created', order);
+        return { success: true, data: order };
+      } catch (err) {
+        return { success: false, error: err.message || 'Failed to create order.' };
+      }
     },
 
     async getAll(filters = {}) {
@@ -314,10 +388,68 @@ const API = {
       if (!doc.exists) return { success: false, error: 'Order not found' };
       const data = doc.data();
       const statusHistory = [...(data.statusHistory || []), { status, timestamp: new Date().toISOString(), note }];
-      await ref.update({ status, statusHistory });
-      const updated = { id, ...data, status, statusHistory };
+      const updates = { status, statusHistory };
+
+      if (status === 'Confirmed' && !data.inventoryDeducted) {
+        await API.inventory.deduct(data.items);
+        await API.loyalty.earnPoints(data.userId, data.total);
+        updates.inventoryDeducted = true;
+        if (data.paymentStatus === 'pending_collection') {
+          updates.paymentStatus = 'paid';
+        }
+      }
+
+      await ref.update(updates);
+      const updated = { id, ...data, ...updates };
       API._emit('order:updated', updated);
       return { success: true, data: updated };
+    },
+
+    /**
+     * Admin confirms manual GCash/Maya payment — deducts stock and awards loyalty.
+     */
+    async confirmPayment(id) {
+      const admin = API.admin.getCurrent();
+      if (!admin) return { success: false, error: 'Admin access required' };
+
+      const ref = FirebaseApp.collections.orders().doc(id);
+      const doc = await ref.get();
+      if (!doc.exists) return { success: false, error: 'Order not found' };
+      const order = doc.data();
+
+      if (order.paymentStatus === 'paid') {
+        return { success: false, error: 'This order is already confirmed as paid.' };
+      }
+      if (!CONFIG.manualPaymentMethods.includes(order.paymentMethod)) {
+        return { success: false, error: 'This order was not paid via a manual QR method.' };
+      }
+
+      const statusHistory = [
+        ...(order.statusHistory || []),
+        { status: 'Confirmed', timestamp: new Date().toISOString(), note: `Payment manually confirmed by ${admin.email}` }
+      ];
+
+      await ref.update({
+        status: 'Confirmed',
+        paymentStatus: 'paid',
+        statusHistory
+      });
+
+      if (!order.inventoryDeducted) {
+        await API.inventory.deduct(order.items);
+        await ref.update({ inventoryDeducted: true });
+      }
+      await API.loyalty.earnPoints(order.userId, order.total);
+
+      await API.admin.logAction('CONFIRM_MANUAL_PAYMENT', {
+        orderId: id,
+        paymentMethod: order.paymentMethod,
+        total: order.total
+      });
+
+      const result = { id, status: 'Confirmed', paymentStatus: 'paid' };
+      API._emit('order:updated', result);
+      return { success: true, data: result };
     }
   },
 
@@ -381,24 +513,6 @@ const API = {
       const cutoff = new Date(now);
       cutoff.setHours(CONFIG.orderCutoffHour, CONFIG.orderCutoffMinute, 0, 0);
       return now <= cutoff;
-    }
-  },
-
-  payment: {
-    process(method, amount) {
-      return new Promise(resolve => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            data: {
-              transactionId: 'TXN-' + Date.now(),
-              method,
-              amount,
-              status: method === 'cod' ? 'pending_collection' : 'completed'
-            }
-          });
-        }, 800);
-      });
     }
   },
 
@@ -475,6 +589,19 @@ const API = {
     async getFaq() {
       const cms = await this._getCms();
       return cms.pages?.faq || [];
+    },
+
+    async getPaymentQrCodes() {
+      const cms = await this._getCms();
+      return { gcashQrUrl: cms.gcashQrUrl || '', mayaQrUrl: cms.mayaQrUrl || '' };
+    },
+
+    async getHero() {
+      const cms = await this._getCms();
+      return {
+        heroTitle: cms.heroTitle || 'Palengke-Fresh, Delivered Tomorrow',
+        heroSubtitle: cms.heroSubtitle || 'Fresh produce, seafood, and meat sourced daily from trusted wet markets — delivered straight to your doorstep in Metro Manila & Rizal.'
+      };
     },
 
     async getAbout() {

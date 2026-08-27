@@ -11,6 +11,7 @@ App.ready().then(async () => {
     DOM.$('#account-nav').innerHTML = `
       <a href="?tab=profile" class="${tab === 'profile' ? 'active' : ''}">👤 Profile</a>
       <a href="?tab=orders" class="${tab === 'orders' ? 'active' : ''}">📦 Orders</a>
+      <a href="?tab=notifications" class="${tab === 'notifications' ? 'active' : ''}">🔔 Notifications</a>
       <a href="?tab=loyalty" class="${tab === 'loyalty' ? 'active' : ''}">⭐ Suki Rewards</a>
       <a href="?tab=addresses" class="${tab === 'addresses' ? 'active' : ''}">📍 Addresses</a>
       <a href="#" id="logout-link">🚪 Logout</a>`;
@@ -68,6 +69,41 @@ App.ready().then(async () => {
           Components.updateCartBadge();
         });
       });
+    }
+
+    if (tab === 'notifications') {
+      const { data: orders } = await API.order.getAll({ userId: user.id });
+
+      // Flatten every order's statusHistory into one feed, newest first.
+      const notifications = orders.flatMap(o =>
+        (o.statusHistory || []).map(h => ({
+          orderId: o.id,
+          status: h.status,
+          note: h.note || '',
+          timestamp: h.timestamp
+        }))
+      ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      const lastSeen = Storage.get(`gocery_notif_seen_${user.id}`, null);
+      Storage.set(`gocery_notif_seen_${user.id}`, new Date().toISOString());
+
+      el.innerHTML = `<h2>Notifications</h2>` +
+        (notifications.length ? notifications.map(n => {
+          const isNew = lastSeen && new Date(n.timestamp) > new Date(lastSeen);
+          return `
+            <div class="order-card" style="${isNew ? 'border-left:3px solid var(--color-primary)' : ''}">
+              <div class="order-card__header">
+                <div>
+                  <strong>Order ${n.orderId}</strong> is now
+                  <span class="order-status order-status--${n.status.replace(/ /g, '\\ ')}">${n.status}</span>
+                  ${isNew ? '<span style="color:var(--color-primary);font-size:0.75rem;margin-left:0.5rem">● NEW</span>' : ''}
+                </div>
+                <small>${Format.dateTime(n.timestamp)}</small>
+              </div>
+              ${n.note ? `<p style="color:var(--color-text-muted);margin-top:0.25rem">${DOM.escapeHtml(n.note)}</p>` : ''}
+              <a href="orders.html?id=${n.orderId}" class="btn btn--outline btn--sm" style="margin-top:0.5rem">View Order</a>
+            </div>`;
+        }).join('') : '<div class="empty-state"><p>No notifications yet. You\'ll see updates here when your order status changes.</p></div>');
     }
 
     if (tab === 'loyalty') {

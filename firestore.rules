@@ -37,7 +37,8 @@ service cloud.firestore {
     }
 
     match /admins/{uid} {
-      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow get: if isSignedIn() && request.auth.uid == uid; // check "am I an admin"
+      allow list: if isAdmin(); // only admins can list all admins (role management view)
       allow write: if isAdmin(); // first admin must be seeded server-side
     }
 
@@ -54,7 +55,9 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if false; // created server-side only, see server/routes/orders.js
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'Pending';
       allow update: if isAdmin();
     }
 

@@ -8,7 +8,15 @@ const CONFIG = {
   currency: 'PHP',
   currencySymbol: '₱',
   freeDeliveryThreshold: 4000,
+  vipFreeShippingThreshold: 2000,
   defaultDeliveryFee: 99,
+  promoCodes: {
+    SUKI10: { type: 'percent', value: 0.10 },
+    FREESHIP: { type: 'free_shipping' }
+  },
+  manualPaymentMethods: ['GCash', 'Maya'],
+  // Get a free public token at mapbox.com — safe to expose client-side.
+  mapboxToken: 'pk.eyJ1Ijoic2lsbHliaXJiIiwiYSI6ImNtcnZ2ZWVjejAwZG8yeXB5Mm94ZHV1ejQifQ.9EL2hIT3HdGPXbsmtyOHVQ',
   orderCutoffHour: 19,
   orderCutoffMinute: 30,
   apiVersion: 'v1',
@@ -53,8 +61,7 @@ const CONFIG = {
   paymentMethods: [
     { id: 'cod', name: 'Cash on Delivery', icon: '💵' },
     { id: 'gcash', name: 'GCash', icon: '📱' },
-    { id: 'maya', name: 'Maya', icon: '💳' },
-    { id: 'card', name: 'Credit/Debit Card', icon: '💳' }
+    { id: 'maya', name: 'Maya', icon: '💳' }
   ],
   loyaltyTiers: [
     { id: 'regular', name: 'Regular Suki', minPoints: 0, perks: ['Earn 1 point per ₱100'] },

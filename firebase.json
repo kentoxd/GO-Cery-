@@ -1,4 +1,28 @@
 {
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      ".firebaserc",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      ".git",
+      ".git/**",
+      ".firebase",
+      ".firebase/**",
+      "node_modules",
+      "node_modules/**",
+      "server",
+      "server/**",
+      "package.json",
+      "package-lock.json",
+      "README.md",
+      ".env",
+      ".env.*"
+    ]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

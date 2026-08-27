@@ -48,6 +48,7 @@ App.ready().then(async () => {
             <a href="?view=products" class="${view === 'products' ? 'active' : ''}">🥬 Products</a>
             <a href="?view=inventory" class="${view === 'inventory' ? 'active' : ''}">📋 Inventory</a>
             <a href="?view=users" class="${view === 'users' ? 'active' : ''}">👥 Customers</a>
+            <a href="?view=content" class="${view === 'content' ? 'active' : ''}">📝 Site Content</a>
             <a href="?view=audit" class="${view === 'audit' ? 'active' : ''}">📝 Audit Log</a>
             <a href="#" id="admin-logout">🚪 Logout</a>
             <a href="../index.html">🏠 View Store</a>
@@ -103,8 +104,13 @@ App.ready().then(async () => {
 
   function renderOrdersTable(orders, compact, tableId) {
     if (!orders.length) return '<p style="color:var(--color-text-muted)">No orders yet.</p>';
+<<<<<<< HEAD
+    return `<table class="admin-table">
+      <thead><tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Status</th>${compact ? '' : '<th>Update Status</th><th></th>'}</tr></thead>
+=======
     return `<table class="admin-table" id="${tableId}">
       <thead><tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Status</th>${compact ? '' : '<th>Update Status</th>'}</tr></thead>
+>>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
       <tbody>${orders.map(o => `
         <tr data-status="${o.status.toLowerCase()}">
           <td>${o.id}</td>
@@ -113,7 +119,8 @@ App.ready().then(async () => {
           <td><span class="order-status order-status--${o.status.replace(/ /g, '\\ ')}">${o.status}</span></td>
           ${compact ? '' : `<td><select class="status-select" data-id="${o.id}">
             ${CONFIG.orderStatuses.map(s => `<option value="${s}" ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
-          </select></td>`}
+          </select></td>
+          <td><button class="btn btn--outline btn--sm view-order" data-id="${o.id}">View</button></td>`}
         </tr>
       `).join('')}</tbody>
     </table>`;
@@ -132,6 +139,8 @@ App.ready().then(async () => {
   if (view === 'dashboard') {
     const stats = await API.admin.getStats();
     const { data: recentOrders } = await API.order.getAll();
+    const auditSnap = await FirebaseApp.collections.auditLogs().orderBy('timestamp', 'desc').limit(5).get();
+    const recentActivity = auditSnap.docs.map(d => d.data());
     renderLayout(`
       <div class="admin-header"><h1>Dashboard</h1><span>Welcome, ${DOM.escapeHtml(admin.name)}</span></div>
       <div class="stat-grid">
@@ -143,8 +152,22 @@ App.ready().then(async () => {
         <div class="stat-card"><div class="stat-card__value">${stats.lowStock}</div><div class="stat-card__label">Low Stock Items</div></div>
       </div>
       <h2>Recent Orders</h2>
+<<<<<<< HEAD
+      ${renderOrdersTable(recentOrders.slice(0, 5), true)}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1.5rem">
+        <h2 style="margin:0">Recent Activity</h2>
+        <a href="?view=audit" class="btn btn--outline btn--sm">View All</a>
+      </div>
+      <table class="admin-table">
+        <thead><tr><th>Timestamp</th><th>Admin</th><th>Action</th><th>Details</th></tr></thead>
+        <tbody>${recentActivity.length ? recentActivity.map(l => `
+          <tr><td>${Format.dateTime(l.timestamp)}</td><td>${l.admin || '—'}</td><td>${l.action}</td><td>${JSON.stringify(l.details)}</td></tr>
+        `).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted)">No recent activity</td></tr>'}</tbody>
+      </table>`);
+=======
       ${renderSearchBar('dashboard-order-search', 'Search recent orders...')}
       ${renderOrdersTable(recentOrders.slice(0, 5), true, 'dashboard-orders-table')}`);
+>>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
     bindOrderActions();
     bindTableSearch('dashboard-order-search', 'dashboard-orders-table', 'No recent orders match your search.');
   }
@@ -153,6 +176,75 @@ App.ready().then(async () => {
     const { data: orders } = await API.order.getAll();
     renderLayout(`
       <div class="admin-header"><h1>Order Management</h1></div>
+<<<<<<< HEAD
+      ${renderOrdersTable(orders)}
+      <div id="order-detail" style="margin-top:1.5rem"></div>`);
+    bindOrderActions();
+
+    DOM.$$('.view-order').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const result = await API.order.getById(btn.dataset.id);
+        if (!result.success) { Components.toast('Could not load order', 'error'); return; }
+        renderOrderDetail(result.data);
+        DOM.$('#order-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    function renderOrderDetail(order) {
+      const needsPaymentConfirmation = order.paymentStatus === 'awaiting_manual_verification';
+      DOM.$('#order-detail').innerHTML = `
+        <div class="admin-form" style="max-width:640px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <h2 style="margin:0">${order.id}</h2>
+              <small style="color:var(--color-text-muted)">Placed ${Format.dateTime(order.createdAt)}</small>
+            </div>
+            <span class="order-status order-status--${order.status.replace(/ /g, '\\ ')}">${order.status}</span>
+          </div>
+
+          ${needsPaymentConfirmation ? `
+            <div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:0.75rem;margin-top:1rem">
+              <p style="margin:0 0 0.5rem;font-size:0.9rem"><strong>Awaiting manual payment verification</strong> — check your ${DOM.escapeHtml(order.paymentMethod)} app for a payment of ${Format.currency(order.total)} from this customer before confirming.</p>
+              <button class="btn btn--primary btn--sm" id="confirm-payment-btn">✅ Confirm Payment Received</button>
+            </div>` : ''}
+
+          <h3 style="margin-top:1.5rem">Items</h3>
+          ${order.items.map(i => `<div class="summary-row"><span>${i.quantity}x ${DOM.escapeHtml(i.name)} (${i.unit})</span><span>${Format.currency(i.lineTotal)}</span></div>`).join('')}
+          <hr style="margin:1rem 0;border:none;border-top:1px solid var(--color-border)">
+          <div class="summary-row"><span>Subtotal</span><span>${Format.currency(order.subtotal)}</span></div>
+          ${order.discount ? `<div class="summary-row"><span>Discount${order.promoCode ? ` (${order.promoCode})` : ''}</span><span>-${Format.currency(order.discount)}</span></div>` : ''}
+          <div class="summary-row"><span>Delivery</span><span>${order.deliveryFee === 0 ? 'FREE' : Format.currency(order.deliveryFee)}</span></div>
+          <div class="summary-row summary-row--total"><span>Total</span><span>${Format.currency(order.total)}</span></div>
+          <hr style="margin:1rem 0;border:none;border-top:1px solid var(--color-border)">
+          <p><strong>Customer:</strong> ${DOM.escapeHtml(order.userName || 'Guest')}</p>
+          <p><strong>Delivery:</strong> ${Format.date(order.deliveryDate)} · ${order.deliverySlot} · ${order.zone}</p>
+          <p><strong>Address:</strong> ${order.address ? DOM.escapeHtml(order.address.street) + ', ' + DOM.escapeHtml(order.address.city) : 'N/A'}</p>
+          <p><strong>Payment Method:</strong> ${order.paymentMethod}</p>
+          <p><strong>Payment Status:</strong> ${order.paymentStatus || '—'}</p>
+
+          <h3 style="margin-top:1.5rem">Status History</h3>
+          ${(order.statusHistory || []).map(h => `
+            <p style="font-size:0.85rem;color:var(--color-text-muted);margin:0.25rem 0">
+              ${Format.dateTime(h.timestamp)} — <strong>${h.status}</strong>${h.note ? ` (${DOM.escapeHtml(h.note)})` : ''}
+            </p>`).join('')}
+
+          <button class="btn btn--outline btn--sm" id="close-order-detail" style="margin-top:1rem">Close</button>
+        </div>`;
+
+      DOM.$('#close-order-detail').addEventListener('click', () => { DOM.$('#order-detail').innerHTML = ''; });
+
+      DOM.$('#confirm-payment-btn')?.addEventListener('click', async () => {
+        if (!confirm(`Confirm you received ${Format.currency(order.total)} via ${order.paymentMethod} for this order?`)) return;
+        const result = await API.order.confirmPayment(order.id);
+        if (result.success) {
+          Components.toast('Payment confirmed — order fulfilled.');
+          window.location.reload();
+        } else {
+          Components.toast(result.error || 'Could not confirm payment', 'error');
+        }
+      });
+    }
+=======
       <div class="admin-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
         <input id="order-search" type="search" placeholder="Search orders..." aria-label="Search orders..." style="flex:1;min-width:180px;padding:0.5rem">
         <select id="order-status-filter" aria-label="Filter orders by status" style="padding:0.5rem">
@@ -172,21 +264,29 @@ App.ready().then(async () => {
       row => !orderStatusFilter.value || row.dataset.status === orderStatusFilter.value
     );
     orderStatusFilter.addEventListener('change', applyOrderFilters);
+>>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
   }
 
 if (view === 'products') {
     const { data: allProducts } = await API.catalog.getProducts();
-    let filters = { search: '', categoryId: '', status: '' };
+    let filters = { search: '', categoryId: '', status: '', tag: '', sort: '' };
+    const allTags = [...new Set(allProducts.flatMap(p => p.tags || []))].sort();
 
     function applyFilters() {
-      return allProducts.filter(p => {
+      let result = allProducts.filter(p => {
         const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
         const status = totalStock > 0 ? 'active' : 'out_of_stock';
         if (filters.search && !p.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
         if (filters.categoryId && p.categoryId !== filters.categoryId) return false;
         if (filters.status && status !== filters.status) return false;
+        if (filters.tag && !(p.tags || []).includes(filters.tag)) return false;
         return true;
       });
+      const stockOf = p => p.variants.reduce((s, v) => s + v.stock, 0);
+      if (filters.sort === 'stock-desc') result = [...result].sort((a, b) => stockOf(b) - stockOf(a));
+      else if (filters.sort === 'stock-asc') result = [...result].sort((a, b) => stockOf(a) - stockOf(b));
+      else if (filters.sort === 'name-asc') result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+      return result;
     }
 
     function renderProductsTable() {
@@ -246,6 +346,9 @@ if (view === 'products') {
           <input id="pe-image-url" placeholder="https://..." value="${DOM.escapeHtml(p.imageUrl || '')}">
         </div>
         <div class="form-group"><label>Emoji icon (used if no photo URL is set)</label><input id="pe-emoji" maxlength="4" value="${DOM.escapeHtml(p.image || '')}"></div>
+        <div class="form-group"><label>Tags (comma-separated — used for the clickable tag filter above)</label>
+          <input id="pe-tags" placeholder="native, organic, best-seller" value="${DOM.escapeHtml((p.tags || []).join(', '))}">
+        </div>
         <h3 style="margin-top:1rem">Variants (price & stock per unit)</h3>
         <table class="admin-table" id="pe-variants-table">
           <thead><tr><th>Unit</th><th>Price (₱)</th><th>Stock</th></tr></thead>
@@ -287,6 +390,7 @@ if (view === 'products') {
           origin: DOM.$('#pe-origin').value.trim(),
           imageUrl: DOM.$('#pe-image-url').value.trim(),
           image: DOM.$('#pe-emoji').value.trim() || '🥬',
+          tags: DOM.$('#pe-tags').value.split(',').map(t => t.trim()).filter(Boolean),
           variants
         };
 
@@ -318,7 +422,18 @@ if (view === 'products') {
           <option value="active">Active</option>
           <option value="out_of_stock">Out of Stock</option>
         </select>
+        <select id="filter-sort" style="padding:0.5rem">
+          <option value="">Sort: Default</option>
+          <option value="stock-desc">Stock: High to Low</option>
+          <option value="stock-asc">Stock: Low to High</option>
+          <option value="name-asc">Name: A to Z</option>
+        </select>
       </div>
+      ${allTags.length ? `
+      <div class="admin-filters" style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+        <button type="button" class="tag-filter-pill ${!filters.tag ? 'active' : ''}" data-tag="">All Tags</button>
+        ${allTags.map(t => `<button type="button" class="tag-filter-pill ${filters.tag === t ? 'active' : ''}" data-tag="${DOM.escapeHtml(t)}">${DOM.escapeHtml(t)}</button>`).join('')}
+      </div>` : ''}
       <table class="admin-table">
         <thead><tr><th>Product</th><th>Category</th><th>Price Range</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody id="products-table-body"></tbody>
@@ -328,6 +443,14 @@ if (view === 'products') {
     DOM.$('#filter-search').addEventListener('input', e => { filters.search = e.target.value; renderProductsTable(); });
     DOM.$('#filter-category').addEventListener('change', e => { filters.categoryId = e.target.value; renderProductsTable(); });
     DOM.$('#filter-status').addEventListener('change', e => { filters.status = e.target.value; renderProductsTable(); });
+    DOM.$('#filter-sort').addEventListener('change', e => { filters.sort = e.target.value; renderProductsTable(); });
+    DOM.$$('.tag-filter-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        filters.tag = btn.dataset.tag;
+        DOM.$$('.tag-filter-pill').forEach(b => b.classList.toggle('active', b.dataset.tag === filters.tag));
+        renderProductsTable();
+      });
+    });
     DOM.$('#add-product').addEventListener('click', () => openProductEditor(null));
 
     renderProductsTable();
@@ -367,7 +490,224 @@ if (view === 'products') {
 
   if (view === 'users') {
     const users = await API.user.getAll();
+    const adminsSnap = await FirebaseApp.collections.admins().get();
+    const adminRoles = new Map(adminsSnap.docs.map(d => [d.id, d.data().role || 'admin']));
+
+    // Admin-only accounts (e.g. the initial super admin from
+    // scripts/seed-admin.js) may have no users/{uid} profile doc at
+    // all — include them so they're not invisible in this list.
+    const userIds = new Set(users.map(u => u.id));
+    const adminOnlyRows = adminsSnap.docs
+      .filter(d => !userIds.has(d.id))
+      .map(d => ({ id: d.id, name: d.data().name || d.data().email, email: d.data().email, phone: null, createdAt: d.data().createdAt || null, _adminOnly: true }));
+    const allRows = [...users, ...adminOnlyRows];
+
     renderLayout(`
+<<<<<<< HEAD
+      <div class="admin-header"><h1>Customers</h1><span>${allRows.length} registered</span></div>
+      <table class="admin-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th><th>Orders</th><th>Role</th></tr></thead>
+        <tbody>${(await Promise.all(allRows.map(async u => {
+          const { data: userOrders } = u._adminOnly ? { data: [] } : await API.order.getAll({ userId: u.id });
+          const currentRole = adminRoles.get(u.id) || 'customer';
+          const isSelf = u.id === admin.id;
+          return `<tr>
+            <td>${DOM.escapeHtml(u.name)}</td>
+            <td>${DOM.escapeHtml(u.email)}</td>
+            <td>${DOM.escapeHtml(u.phone || '—')}</td>
+            <td>${u.createdAt ? Format.date(u.createdAt) : '—'}</td>
+            <td>${userOrders.length}</td>
+            <td>
+              ${admin.role === 'super_admin' ? `
+              <select class="role-select" data-uid="${u.id}" data-email="${DOM.escapeHtml(u.email)}" data-prev="${currentRole}" ${isSelf ? 'disabled title="You cannot change your own role"' : ''}>
+                <option value="customer" ${currentRole === 'customer' ? 'selected' : ''}>Customer</option>
+                <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>Admin</option>
+                <option value="super_admin" ${currentRole === 'super_admin' ? 'selected' : ''}>Super Admin</option>
+              </select>` : `<span title="Only super admins can change roles">${{ customer: 'Customer', admin: 'Admin', super_admin: 'Super Admin' }[currentRole]}</span>`}
+            </td>
+          </tr>`;
+        }))).join('')}</tbody>
+      </table>`);
+
+    if (admin.role === 'super_admin') {
+    DOM.$$('.role-select').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const prev = sel.dataset.prev;
+        const newRole = sel.value;
+        const roleLabel = { customer: 'Customer', admin: 'Admin', super_admin: 'Super Admin' }[newRole];
+        if (!confirm(`Change ${sel.dataset.email}'s role to ${roleLabel}?`)) {
+          sel.value = prev;
+          return;
+        }
+        const result = await API.user.updateRole(sel.dataset.uid, newRole);
+        if (result.success) {
+          sel.dataset.prev = newRole;
+          Components.toast(`Role updated to ${roleLabel}`);
+        } else {
+          sel.value = prev;
+          Components.toast(result.error || 'Role update failed', 'error');
+        }
+      });
+    });
+    }
+  }
+
+  if (view === 'content') {
+    const cmsDoc = await FirebaseApp.collections.cms().doc('main').get();
+    const cms = cmsDoc.exists ? cmsDoc.data() : {};
+    const banners = cms.banners || [];
+
+    function renderBannersTable() {
+      return `
+        <table class="admin-table">
+          <thead><tr><th>Title</th><th>Subtitle</th><th>Active</th><th>Actions</th></tr></thead>
+          <tbody>${banners.length ? banners.map((b, i) => `
+            <tr>
+              <td>${DOM.escapeHtml(b.title)}</td>
+              <td>${DOM.escapeHtml(b.subtitle || '')}</td>
+              <td>${b.active ? '✅' : '❌'}</td>
+              <td>
+                <button class="btn btn--outline btn--sm edit-banner" data-idx="${i}">Edit</button>
+                <button class="btn btn--outline btn--sm toggle-banner" data-idx="${i}">${b.active ? 'Deactivate' : 'Activate'}</button>
+                <button class="btn btn--outline btn--sm delete-banner" data-idx="${i}">Delete</button>
+              </td>
+            </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted)">No promo banners yet</td></tr>'}</tbody>
+        </table>`;
+    }
+
+    renderLayout(`
+      <div class="admin-header"><h1>Site Content</h1></div>
+
+      <h2>Homepage Hero</h2>
+      <p style="color:var(--color-text-muted)">The big headline and subtitle shown at the top of the homepage.</p>
+      <form id="hero-content-form" class="admin-form" style="max-width:600px">
+        <div class="form-group"><label>Hero Title</label>
+          <input id="hero-title-input" value="${DOM.escapeHtml(cms.heroTitle || 'Palengke-Fresh, Delivered Tomorrow')}">
+        </div>
+        <div class="form-group"><label>Hero Subtitle</label>
+          <textarea id="hero-subtitle-input" rows="2">${DOM.escapeHtml(cms.heroSubtitle || 'Fresh produce, seafood, and meat sourced daily from trusted wet markets — delivered straight to your doorstep in Metro Manila & Rizal.')}</textarea>
+        </div>
+        <p class="form-error" id="hero-content-error"></p>
+        <button type="submit" class="btn btn--primary">Save Hero</button>
+      </form>
+
+      <h2 style="margin-top:2rem">Promo Banners</h2>
+      <p style="color:var(--color-text-muted)">Shown as scrolling promo cards on the homepage. Only active banners are visible to customers.</p>
+      <div id="banners-table-wrap">${renderBannersTable()}</div>
+      <button class="btn btn--outline btn--sm" id="add-banner" style="margin-top:0.75rem">+ Add Banner</button>
+      <div id="banner-editor" class="admin-form" style="max-width:480px" hidden></div>
+
+      <h2 style="margin-top:2rem">Manual Payment QR Codes</h2>
+      <p style="color:var(--color-text-muted)">
+        Customers who choose GCash or Maya at checkout will see whichever QR code you set here.
+        Paste a direct image link (e.g. from Imgur — right-click the uploaded photo → "Copy image address",
+        not the page URL). Payments made this way are NOT automatically confirmed — you'll need to verify
+        the payment yourself and update the order status manually in Orders.
+      </p>
+      <form id="qr-content-form" class="admin-form" style="max-width:480px">
+        <div class="form-group">
+          <label>GCash QR Code Image URL</label>
+          <input type="text" id="gcash-qr-url" value="${DOM.escapeHtml(cms.gcashQrUrl || '')}" placeholder="https://...">
+        </div>
+        ${cms.gcashQrUrl ? `<img src="${DOM.escapeHtml(cms.gcashQrUrl)}" alt="GCash QR preview" style="width:140px;height:140px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px;margin-bottom:1rem">` : ''}
+        <div class="form-group">
+          <label>Maya QR Code Image URL</label>
+          <input type="text" id="maya-qr-url" value="${DOM.escapeHtml(cms.mayaQrUrl || '')}" placeholder="https://...">
+        </div>
+        ${cms.mayaQrUrl ? `<img src="${DOM.escapeHtml(cms.mayaQrUrl)}" alt="Maya QR preview" style="width:140px;height:140px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px;margin-bottom:1rem">` : ''}
+        <p class="form-error" id="qr-content-error"></p>
+        <button type="submit" class="btn btn--primary">Save QR Codes</button>
+      </form>`);
+
+    DOM.$('#hero-content-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errorEl = DOM.$('#hero-content-error');
+      try {
+        await FirebaseApp.collections.cms().doc('main').set({
+          heroTitle: DOM.$('#hero-title-input').value.trim(),
+          heroSubtitle: DOM.$('#hero-subtitle-input').value.trim()
+        }, { merge: true });
+        await API.admin.logAction('UPDATE_CMS', { type: 'hero' });
+        Components.toast('Hero content saved');
+      } catch (err) {
+        errorEl.textContent = err.message || 'Could not save. Please try again.';
+      }
+    });
+
+    async function saveBanners() {
+      await FirebaseApp.collections.cms().doc('main').set({ banners }, { merge: true });
+      await API.admin.logAction('UPDATE_CMS', { type: 'banners' });
+      DOM.$('#banners-table-wrap').innerHTML = renderBannersTable();
+      bindBannerRowActions();
+    }
+
+    function openBannerEditor(idx) {
+      const isNew = idx === undefined;
+      const b = isNew ? { title: '', subtitle: '', cta: 'Shop Now', link: 'pages/shop.html', active: true } : banners[idx];
+      DOM.$('#banner-editor').hidden = false;
+      DOM.$('#banner-editor').innerHTML = `
+        <h3>${isNew ? 'Add Banner' : 'Edit Banner'}</h3>
+        <div class="form-group"><label>Title</label><input id="be-title" value="${DOM.escapeHtml(b.title)}"></div>
+        <div class="form-group"><label>Subtitle</label><input id="be-subtitle" value="${DOM.escapeHtml(b.subtitle || '')}"></div>
+        <div class="form-group"><label>Button Text</label><input id="be-cta" value="${DOM.escapeHtml(b.cta || 'Shop Now')}"></div>
+        <div class="form-group"><label>Link</label><input id="be-link" value="${DOM.escapeHtml(b.link || 'pages/shop.html')}"></div>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+          <input type="checkbox" id="be-active" ${b.active ? 'checked' : ''}> Active
+        </label>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn btn--primary btn--sm" id="be-save">Save</button>
+          <button class="btn btn--outline btn--sm" id="be-cancel">Cancel</button>
+        </div>`;
+
+      DOM.$('#be-cancel').addEventListener('click', () => { DOM.$('#banner-editor').hidden = true; });
+      DOM.$('#be-save').addEventListener('click', async () => {
+        const updated = {
+          title: DOM.$('#be-title').value.trim(),
+          subtitle: DOM.$('#be-subtitle').value.trim(),
+          cta: DOM.$('#be-cta').value.trim() || 'Shop Now',
+          link: DOM.$('#be-link').value.trim() || 'pages/shop.html',
+          active: DOM.$('#be-active').checked
+        };
+        if (!updated.title) { Components.toast('Title is required', 'error'); return; }
+        if (isNew) banners.push(updated);
+        else banners[idx] = updated;
+        DOM.$('#banner-editor').hidden = true;
+        await saveBanners();
+      });
+    }
+
+    function bindBannerRowActions() {
+      DOM.$$('.edit-banner').forEach(btn => btn.addEventListener('click', () => openBannerEditor(parseInt(btn.dataset.idx, 10))));
+      DOM.$$('.toggle-banner').forEach(btn => btn.addEventListener('click', async () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        banners[idx].active = !banners[idx].active;
+        await saveBanners();
+      }));
+      DOM.$$('.delete-banner').forEach(btn => btn.addEventListener('click', async () => {
+        if (!confirm('Delete this banner?')) return;
+        banners.splice(parseInt(btn.dataset.idx, 10), 1);
+        await saveBanners();
+      }));
+    }
+    bindBannerRowActions();
+    DOM.$('#add-banner').addEventListener('click', () => openBannerEditor());
+
+    DOM.$('#qr-content-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errorEl = DOM.$('#qr-content-error');
+      try {
+        await FirebaseApp.collections.cms().doc('main').set({
+          gcashQrUrl: DOM.$('#gcash-qr-url').value.trim(),
+          mayaQrUrl: DOM.$('#maya-qr-url').value.trim()
+        }, { merge: true });
+        await API.admin.logAction('UPDATE_CMS', { type: 'payment_qr_codes' });
+        Components.toast('QR codes saved');
+        window.location.reload();
+      } catch (err) {
+        errorEl.textContent = err.message || 'Could not save. Please try again.';
+      }
+    });
+=======
       <div class="admin-header"><h1>Customers</h1><span>${users.length} registered</span></div>
       ${renderSearchBar('user-search', 'Search customers...')}
       <table class="admin-table" id="users-table">
@@ -378,6 +718,7 @@ if (view === 'products') {
         }))).join('')}</tbody>
       </table>`);
     bindTableSearch('user-search', 'users-table', 'No customers match your search.');
+>>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
   }
 
   if (view === 'audit') {
