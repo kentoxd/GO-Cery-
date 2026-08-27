@@ -27,7 +27,6 @@ App.ready().then(async () => {
         ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:12px" onerror="this.style.display='none'">`
         : product.image}</div>
       <div class="product-detail__info">
-        <span class="product-card__category">${category ? category.icon + ' ' + category.name : ''}</span>
         <h1>${DOM.escapeHtml(product.name)}</h1>
         <div class="product-detail__meta">
           ${avgRating > 0 ? `<span class="product-card__rating">${'★'.repeat(Math.round(avgRating))} ${avgRating.toFixed(1)} (${reviews.length} reviews)</span> · ` : ''}

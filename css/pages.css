@@ -10,7 +10,7 @@
 .faq-panel { padding: 2rem 1.25rem 3rem; background: #f5f8ee; }
 .faq-panel__header h1 { color: var(--color-primary-dark); font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.05; text-align: center; }
 .faq-panel__rule { width: 62%; height: 1px; margin: 0.75rem auto 1.75rem; background: var(--color-primary); }
-.faq-list { max-width: 680px; margin: 0 auto; }
+.faq-list { max-width: 680px; margin: 0 auto; 
   min-height: calc(100vh - 105px);
   margin-bottom: 2rem;
   overflow: visible;
