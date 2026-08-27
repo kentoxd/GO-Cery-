@@ -29,7 +29,7 @@ const Components = {
             <a href="${this._root()}pages/faq.html">FAQs</a>
             <a href="${this._root()}pages/about.html">About Us</a>
             <a href="${this._root()}pages/about.html#delivery">Delivery Areas</a>
-            <a href="${this._root()}pages/about.html#contact">Contact</a>
+            <a href="${this._root()}pages/contact.html">Contact</a>
             <a href="https://m.me/gocery" target="_blank" rel="noopener">Messenger Chat</a>
           </nav>
           <div class="header__actions">
@@ -77,7 +77,7 @@ const Components = {
             <a href="${this._root()}pages/faq.html">FAQs</a>
             <a href="${this._root()}pages/about.html">About Us</a>
             <a href="${this._root()}pages/about.html#delivery-areas">Delivery Areas</a>
-            <a href="${this._root()}pages/about.html#contact">Contact</a>
+            <a href="${this._root()}pages/contact.html">Contact</a>
             <a href="https://m.me/gocery" target="_blank" rel="noopener">Messenger Chat</a>
           </div>
           <div class="footer__newsletter">

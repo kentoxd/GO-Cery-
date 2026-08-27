@@ -1,6 +1,61 @@
 /* Page-specific styles */
 
 /* Hero */
+.about-hero {
+  min-height: calc(100vh - 105px);
+  display: flex;
+  align-items: stretch;
+  padding: 1rem;
+  background: var(--color-bg);
+}
+.about-hero__inner {
+  position: relative;
+  max-width: 1000px;
+  flex: 1;
+  min-height: calc(100vh - 137px);
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 12rem;
+  overflow: hidden;
+  background: #f5f8ee;
+}
+.about-hero__inner h1 {
+  color: var(--color-primary-dark);
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  text-align: center;
+}
+.about-hero__rule {
+  width: 52%;
+  height: 1px;
+  margin: 0.35rem auto 1.75rem;
+  background: var(--color-primary);
+}
+.about-hero__cards {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 1.5rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.about-hero__card {
+  padding: 1.75rem 2rem;
+  background: #fff;
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.22);
+}
+.about-hero__card p {
+  color: var(--color-primary-dark);
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+.about-hero__image {
+  position: absolute;
+  left: -1rem;
+  bottom: -2.5rem;
+  z-index: 2;
+  width: min(390px, 44%);
+  max-width: none;
+}
+
 .hero {
   background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 50%, var(--color-primary-light) 100%);
   color: #fff;
@@ -176,12 +231,7 @@
   background-repeat: no-repeat;
   background-size: cover;
 }
-.shop-banner__image--left {
-  /* Add your left banner image here: background-image: url('../asset/your-image.png'); */
-}
-.shop-banner__image--right {
-  /* Add your right banner image here: background-image: url('../asset/your-image.png'); */
-}
+
 .shop-banner--all {
   background: none;
 }
@@ -516,6 +566,76 @@
 .track-step.active .track-step__label { color: var(--color-text); font-weight: 600; }
 
 /* Auth pages */
+.contact-page {
+  min-height: calc(100vh - 105px);
+  padding: 1rem;
+  background: var(--color-bg);
+}
+.contact-page__inner {
+  max-width: 1000px;
+  min-height: calc(100vh - 137px);
+  margin: 0 auto;
+  padding: 2.5rem 2rem 5rem;
+  background: #fff;
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.22);
+  color: var(--color-primary-dark);
+}
+.contact-page__inner h1 {
+  text-align: center;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+}
+.contact-page__rule {
+  width: 52%;
+  height: 1px;
+  margin: 0.35rem auto 1.75rem;
+  background: var(--color-primary);
+}
+.contact-page__intro {
+  margin-bottom: 4rem;
+  text-align: center;
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+.contact-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2.5rem;
+  max-width: 850px;
+  margin: 0 auto;
+}
+.contact-card {
+  position: relative;
+  min-height: 190px;
+  padding: 3.25rem 1.25rem 1.25rem;
+  border: 2px solid var(--color-primary-dark);
+  text-align: center;
+}
+.contact-card__icon {
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+}
+.contact-card:first-child .contact-card__icon { font-size: 1.4rem; }
+.contact-card h2 {
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+.contact-card p {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
 .auth-page {
   display: flex;
   align-items: center;
@@ -768,6 +888,16 @@
   .cart-item { grid-template-columns: 50px 1fr; }
   .cart-item__price { grid-column: 2; }
   .admin-sidebar { display: none; }
+  .contact-page { padding: 0.75rem 0.5rem; }
+  .contact-page__inner { min-height: calc(100vh - 120px); padding: 2rem 1rem 4rem; }
+  .contact-page__intro { margin-bottom: 3.5rem; font-size: 0.92rem; }
+  .contact-cards { grid-template-columns: 1fr; gap: 3.25rem; max-width: 280px; }
+  .contact-card { min-height: 175px; }
+  .about-hero { padding: 0.75rem 0.5rem 0; }
+  .about-hero__inner { min-height: 660px; padding: 2rem 1rem 10rem; }
+  .about-hero__card { padding: 1.25rem; }
+  .about-hero__card p { font-size: 0.92rem; }
+  .about-hero__image { left: -1rem; bottom: -2rem; width: 62%; }
   .shop-banner {
     grid-template-columns: 1fr;
   }

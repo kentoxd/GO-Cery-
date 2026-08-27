@@ -12,37 +12,22 @@
 <body>
   <div id="site-header"></div>
   <main>
-    <section class="hero" style="padding:3rem 0">
-      <div class="container hero__content">
-        <h1>About Go! Cery</h1>
-        <p id="about-text"></p>
-      </div>
-    </section>
-    <section class="section">
-      <div class="container" style="max-width:800px">
-        <h2 id="delivery">Our Promise</h2>
-        <div class="grid grid--3" style="margin-top:1.5rem">
-          <div class="promo-card"><h3>🌿 Palengke-Fresh</h3><p>Sourced daily from trusted wet market vendors. Not satisfied? Full refund.</p></div>
-          <div class="promo-card"><h3>🚚 Next-Day Delivery</h3><p>Order before 7:30 PM, get it tomorrow. Metro Manila & Rizal.</p></div>
-          <div class="promo-card"><h3>⭐ Suki Rewards</h3><p>Earn points, unlock VIP perks, and get free delivery.</p></div>
+    <section class="about-hero">
+      <div class="about-hero__inner">
+        <h1>ABOUT US</h1>
+        <div class="about-hero__rule"></div>
+        <div class="about-hero__cards">
+          <article class="about-hero__card">
+            <p id="about-text"></p>
+          </article>
+          <article class="about-hero__card">
+            <p>Browse through nine carefully arranged categories: fruits, vegetables, herbs, seafood, meat, grains, dairy, deli and essentials. Whether you’re planning for a week’s worth of meals or you just need something for tonight’s dinner, Go! Cery already has it, so you can cook delicious, healthy and well-balanced meals for you and your family.</p>
+          </article>
         </div>
-
-        <h2 id="delivery-areas" style="margin-top:3rem">Delivery Areas</h2>
-        <p style="margin-top:0.5rem;color:var(--color-text-muted)">We currently deliver to the following zones:</p>
-        <ul style="margin:1rem 0 0 1.25rem" id="zones-list"></ul>
-
-        <h2 id="contact" style="margin-top:3rem">Contact Us</h2>
-        <p style="margin-top:0.5rem">Have questions? Reach out to our suki support team.</p>
-        <form id="contact-form" style="max-width:480px;margin-top:1rem">
-          <div class="form-group"><label>Name</label><input name="name" required></div>
-          <div class="form-group"><label>Email</label><input type="email" name="email" required></div>
-          <div class="form-group"><label>Message</label><textarea name="message" rows="4" required></textarea></div>
-          <button type="submit" class="btn btn--primary">Send Message</button>
-        </form>
+        <img class="about-hero__image" src="https://media.discordapp.net/attachments/1488093221014994986/1542500310176505916/image.png?ex=6a9174dc&is=6a90235c&hm=ab23ec495ace19f70ec40658456e590e4b62413be7b4b475378d7cf24f4a2209&=&format=webp&quality=lossless" alt="Pantry staples">
       </div>
     </section>
   </main>
-  <div id="site-footer"></div>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -60,15 +45,7 @@
   <script>
     App.ready().then(async () => {
       await Components.initLayout('');
-      DOM.$('#about-text').textContent = await API.cms.getAbout();
-      DOM.$('#zones-list').innerHTML = CONFIG.deliveryZones.map(z =>
-        `<li><strong>${z.name}</strong> – Delivery fee: ${Format.currency(z.fee)} (Free above ${Format.currency(CONFIG.freeDeliveryThreshold)})</li>`
-      ).join('');
-      DOM.$('#contact-form').addEventListener('submit', e => {
-        e.preventDefault();
-        Components.toast('Message sent! We\'ll get back to you soon.');
-        e.target.reset();
-      });
+      DOM.$('#about-text').textContent = 'GO! Cery is your one-stop online wet market, sort of thing, made for busy Filipino households who want fresh, quality ingredients without the hassle of a real trip to the palengke. It’s built with a simple easy-to-navigate layout, for shopping online to feel effortless for our target market, basically.';
     });
   </script>
 </body>

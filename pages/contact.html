@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us – Go! Cery</title>
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/pages.css">
+  <link rel="stylesheet" href="../css/loader.css">
+  <link rel="icon" href="../asset/GOCERY_LOGO_NOBG.png" type="image/x-icon">
+</head>
+<body>
+  <div id="site-header"></div>
+  <main>
+    <section class="contact-page">
+      <div class="contact-page__inner">
+        <h1>CONTACT US</h1>
+        <div class="contact-page__rule"></div>
+        <p class="contact-page__intro">Our team will be ready to assist you during our business hours<br>8 AM - 9PM</p>
+        <div class="contact-cards">
+          <article class="contact-card">
+            <div class="contact-card__icon" aria-hidden="true">●</div>
+            <h2>COMPANY ADDRESS</h2>
+            <p>938 Aurora Blvd, Cubao,<br>Quezon City, 1109 Metro<br>Manila</p>
+          </article>
+          <article class="contact-card">
+            <div class="contact-card__icon" aria-hidden="true">☎</div>
+            <h2>CONTACT NUMBER</h2>
+            <p>(02) 89110964</p>
+            <p>(63+) 922260115</p>
+          </article>
+          <article class="contact-card">
+            <div class="contact-card__icon" aria-hidden="true">✉</div>
+            <h2>EMAIL ADDRESS</h2>
+            <p>shopwithGOCERY<br>@gmail.com</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div id="site-footer"></div>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/config.firebase.js"></script>
+  <script src="../js/utils/storage.js"></script>
+  <script src="../js/utils/format.js"></script>
+  <script src="../js/utils/dom.js"></script>
+  <script src="../js/data/seed.js"></script>
+  <script src="../js/modules/firebase.js"></script>
+  <script src="../js/modules/api.js"></script>
+  <script src="../js/components/ui.js"></script>
+  <script src="../js/app.js"></script>
+  <script>
+    App.ready().then(() => Components.initLayout(''));
+  </script>
+</body>
+</html>
