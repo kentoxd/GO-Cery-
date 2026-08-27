@@ -62,12 +62,51 @@ App.ready().then(async () => {
     });
   }
 
-  function renderOrdersTable(orders, compact) {
+  function renderSearchBar(id, placeholder) {
+    return `<div class="admin-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
+      <input id="${id}" type="search" placeholder="${placeholder}" aria-label="${placeholder}" style="flex:1;min-width:180px;padding:0.5rem">
+    </div>`;
+  }
+
+  function bindTableSearch(inputId, tableId, emptyMessage, additionalMatch = () => true) {
+    const input = DOM.$(`#${inputId}`);
+    const table = DOM.$(`#${tableId}`);
+    if (!input || !table) return () => {};
+
+    const applyFilter = () => {
+      const query = input.value.trim().toLowerCase();
+      const rows = DOM.$$('tbody tr', table);
+      let visibleRows = 0;
+      rows.forEach(row => {
+        const matches = (!query || row.textContent.toLowerCase().includes(query)) && additionalMatch(row);
+        row.hidden = !matches;
+        if (matches) visibleRows++;
+      });
+
+      let emptyRow = table.querySelector('.table-filter-empty');
+      if (!visibleRows && rows.length) {
+        if (!emptyRow) {
+          emptyRow = document.createElement('tr');
+          emptyRow.className = 'table-filter-empty';
+          emptyRow.innerHTML = `<td colspan="${table.tHead.rows[0].cells.length}" style="text-align:center;color:var(--color-text-muted)">${emptyMessage}</td>`;
+          table.tBodies[0].appendChild(emptyRow);
+        }
+        emptyRow.hidden = false;
+      } else if (emptyRow) {
+        emptyRow.hidden = true;
+      }
+    };
+
+    input.addEventListener('input', applyFilter);
+    return applyFilter;
+  }
+
+  function renderOrdersTable(orders, compact, tableId) {
     if (!orders.length) return '<p style="color:var(--color-text-muted)">No orders yet.</p>';
-    return `<table class="admin-table">
+    return `<table class="admin-table" id="${tableId}">
       <thead><tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Status</th>${compact ? '' : '<th>Update Status</th>'}</tr></thead>
       <tbody>${orders.map(o => `
-        <tr>
+        <tr data-status="${o.status.toLowerCase()}">
           <td>${o.id}</td>
           <td>${DOM.escapeHtml(o.userName || 'Guest')}</td>
           <td>${Format.currency(o.total)}</td>
@@ -104,16 +143,35 @@ App.ready().then(async () => {
         <div class="stat-card"><div class="stat-card__value">${stats.lowStock}</div><div class="stat-card__label">Low Stock Items</div></div>
       </div>
       <h2>Recent Orders</h2>
-      ${renderOrdersTable(recentOrders.slice(0, 5), true)}`);
+      ${renderSearchBar('dashboard-order-search', 'Search recent orders...')}
+      ${renderOrdersTable(recentOrders.slice(0, 5), true, 'dashboard-orders-table')}`);
     bindOrderActions();
+    bindTableSearch('dashboard-order-search', 'dashboard-orders-table', 'No recent orders match your search.');
   }
 
   if (view === 'orders') {
     const { data: orders } = await API.order.getAll();
     renderLayout(`
       <div class="admin-header"><h1>Order Management</h1></div>
-      ${renderOrdersTable(orders)}`);
+      <div class="admin-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
+        <input id="order-search" type="search" placeholder="Search orders..." aria-label="Search orders..." style="flex:1;min-width:180px;padding:0.5rem">
+        <select id="order-status-filter" aria-label="Filter orders by status" style="padding:0.5rem">
+          <option value="">All Statuses</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="pending">Pending</option>
+          <option value="preparing">Preparing</option>
+        </select>
+      </div>
+      ${renderOrdersTable(orders, false, 'orders-table')}`);
     bindOrderActions();
+    const orderStatusFilter = DOM.$('#order-status-filter');
+    const applyOrderFilters = bindTableSearch(
+      'order-search',
+      'orders-table',
+      'No orders match your filters.',
+      row => !orderStatusFilter.value || row.dataset.status === orderStatusFilter.value
+    );
+    orderStatusFilter.addEventListener('change', applyOrderFilters);
   }
 
 if (view === 'products') {
@@ -280,7 +338,8 @@ if (view === 'products') {
     renderLayout(`
       <div class="admin-header"><h1>Inventory</h1></div>
       <h2 style="margin-bottom:1rem">Low Stock Alerts</h2>
-      <table class="admin-table">
+      ${renderSearchBar('inventory-search', 'Search inventory...')}
+      <table class="admin-table" id="inventory-table">
         <thead><tr><th>Product</th><th>Unit</th><th>Stock</th><th>Action</th></tr></thead>
         <tbody>${products.flatMap(p => p.variants.filter(v => v.stock < 20).map(v => `
           <tr style="${v.stock < 10 ? 'background:#fef2f2' : ''}">
@@ -291,6 +350,8 @@ if (view === 'products') {
           </tr>
         `)).join('')}</tbody>
       </table>`);
+
+    bindTableSearch('inventory-search', 'inventory-table', 'No inventory items match your search.');
 
     DOM.$$('.restock-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -308,13 +369,15 @@ if (view === 'products') {
     const users = await API.user.getAll();
     renderLayout(`
       <div class="admin-header"><h1>Customers</h1><span>${users.length} registered</span></div>
-      <table class="admin-table">
+      ${renderSearchBar('user-search', 'Search customers...')}
+      <table class="admin-table" id="users-table">
         <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th><th>Orders</th></tr></thead>
         <tbody>${(await Promise.all(users.map(async u => {
           const { data: userOrders } = await API.order.getAll({ userId: u.id });
           return `<tr><td>${DOM.escapeHtml(u.name)}</td><td>${DOM.escapeHtml(u.email)}</td><td>${DOM.escapeHtml(u.phone || '—')}</td><td>${Format.date(u.createdAt)}</td><td>${userOrders.length}</td></tr>`;
         }))).join('')}</tbody>
       </table>`);
+    bindTableSearch('user-search', 'users-table', 'No customers match your search.');
   }
 
   if (view === 'audit') {
@@ -322,11 +385,13 @@ if (view === 'products') {
     const logs = snap.docs.map(d => d.data());
     renderLayout(`
       <div class="admin-header"><h1>Audit Trail</h1></div>
-      <table class="admin-table">
+      ${renderSearchBar('audit-search', 'Search audit log...')}
+      <table class="admin-table" id="audit-table">
         <thead><tr><th>Timestamp</th><th>Admin</th><th>Action</th><th>Details</th></tr></thead>
         <tbody>${logs.length ? logs.map(l => `
           <tr><td>${Format.dateTime(l.timestamp)}</td><td>${l.admin || '—'}</td><td>${l.action}</td><td>${JSON.stringify(l.details)}</td></tr>
         `).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted)">No audit logs yet</td></tr>'}</tbody>
       </table>`);
+    bindTableSearch('audit-search', 'audit-table', 'No audit entries match your search.');
   }
 });
