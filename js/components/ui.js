@@ -56,12 +56,12 @@ const Components = {
       <footer class="footer">
         <div class="container footer__grid">
           <div class="footer__brand">
-            <h3>🛒 ${CONFIG.appName}</h3>
+            <h3>${CONFIG.appName}</h3>
             <p>Palengke-fresh produce, seafood, and meat delivered to your doorstep in Metro Manila & Rizal.</p>
             <div class="trust-badges">
-              <span class="badge">✅ Palengke-Fresh Guarantee</span>
-              <span class="badge">🚚 Next-Day Delivery</span>
-              <span class="badge">⭐ Trusted by 5,000+ Sukis</span>
+              <span class="badge">Palengke-Fresh Guarantee</span>
+              <span class="badge">Next-Day Delivery</span>
+              <span class="badge">Trusted by 5,000+ Sukis</span>
             </div>
           </div>
           <div class="footer__links">
