@@ -12,13 +12,24 @@
 <body>
   <div id="site-header"></div>
   <main>
-    <div class="container shop-layout">
-      <aside class="shop-sidebar" id="shop-sidebar"></aside>
-      <div>
+    <div class="container shop-page">
+      <section class="shop-banner shop-banner--all" id="shop-banner" aria-label="Shop banner">
+        <div class="shop-banner__image shop-banner__image--left" id="shop-banner-image-left"></div>
+        <div class="shop-banner__content">
+          <p class="shop-banner__eyebrow" id="shop-banner-eyebrow">Palengke-fresh picks</p>
+          <h1 id="shop-banner-title">Shop Daily</h1>
+          <p id="shop-banner-subtitle">Fresh choices delivered to your doorstep.</p>
+        </div>
+        <div class="shop-banner__image shop-banner__image--right" id="shop-banner-image-right"></div>
+      </section>
+      <div class="shop-layout">
+        <aside class="shop-sidebar" id="shop-sidebar"></aside>
+        <div>
         <div class="shop-toolbar">
           <h1>Shop <small id="product-count" style="font-weight:400;color:var(--color-text-muted)"></small></h1>
         </div>
-        <div class="grid grid--4" id="products-grid"></div>
+        <div class="grid grid--3" id="products-grid"></div>
+        </div>
       </div>
     </div>
   </main>
