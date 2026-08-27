@@ -22,16 +22,15 @@ const Components = {
       <header class="header">
         <div class="container header__inner">
           <a href="${this._root()}index.html" class="header__logo">
-            <span class="logo-icon">🛒</span>
-            <span class="logo-text">${CONFIG.appName}<small>${CONFIG.tagline}</small></span>
+            <img src="https://res.cloudinary.com/m0uovtom/image/upload/v1787825182/GOCERY_LOGO.png" width="65" height="55">
           </a>
           <nav class="header__nav" id="main-nav">
             <a href="${this._root()}pages/shop.html" class="${activePage === 'shop' ? 'active' : ''}">Shop</a>
-            <a href="${this._root()}pages/shop.html?category=fruits">Fruits</a>
-            <a href="${this._root()}pages/shop.html?category=vegetables">Vegetables</a>
-            <a href="${this._root()}pages/shop.html?category=seafood">Seafood</a>
-            <a href="${this._root()}pages/shop.html?category=meat">Meat</a>
-            <a href="${this._root()}pages/blog.html" class="${activePage === 'blog' ? 'active' : ''}">Recipes</a>
+            <a href="${this._root()}pages/faq.html">FAQs</a>
+            <a href="${this._root()}pages/about.html">About Us</a>
+            <a href="${this._root()}pages/about.html#delivery">Delivery Areas</a>
+            <a href="${this._root()}pages/about.html#contact">Contact</a>
+            <a href="https://m.me/gocery" target="_blank" rel="noopener">Messenger Chat</a>
           </nav>
           <div class="header__actions">
             <form class="search-form" action="${this._root()}pages/shop.html" method="get">
