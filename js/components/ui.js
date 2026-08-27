@@ -118,7 +118,6 @@ const Components = {
           ${!inStock ? '<span class="product-card__badge product-card__badge--sold">Sold Out</span>' : ''}
         </a>
         <div class="product-card__body">
-          <span class="product-card__category">${this._categoryName(product.categoryId)}</span>
           <h3 class="product-card__title">
             <a href="${this._root()}pages/product.html?id=${product.id}">${DOM.escapeHtml(product.name)}</a>
           </h3>
