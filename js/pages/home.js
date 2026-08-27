@@ -23,11 +23,12 @@ App.ready().then(async () => {
   if (catEl) {
     catEl.innerHTML = CONFIG.categories.map(c => `
       <a href="pages/shop.html?category=${c.id}" class="category-card">
-        <span class="category-card__icon">${c.icon}</span>
+        <img  src="${c.icon}"  alt="${DOM.escapeHtml(c.name)}" class="category-card__icon">
         <span class="category-card__name">${DOM.escapeHtml(c.name)}</span>
       </a>
     `).join('');
   }
+
 
   const featuredEl = DOM.$('#featured-products');
   if (featuredEl) {
