@@ -1,10 +1,12 @@
 App.ready().then(async () => {
   await Components.initLayout('blog');
 
-  const posts = await API.cms.getBlogPosts();
+  const posts = await API.cms.getRecipes();
   DOM.$('#blog-grid').innerHTML = posts.map(p => `
     <article class="blog-card">
-      <div class="blog-card__image">${p.image}</div>
+      <div class="blog-card__image">${String(p.image || '').startsWith('http')
+        ? `<img src="${DOM.escapeHtml(p.image)}" alt="${DOM.escapeHtml(p.title)}">`
+        : p.image || '🍲'}</div>
       <div class="blog-card__body">
         <span class="blog-card__tag">${DOM.escapeHtml(p.category)}</span>
         <h3>${DOM.escapeHtml(p.title)}</h3>
@@ -21,7 +23,9 @@ App.ready().then(async () => {
       DOM.$('#blog-modal').innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem" id="modal-overlay">
           <div style="background:#fff;border-radius:var(--radius-lg);padding:2rem;max-width:600px;width:100%;max-height:80vh;overflow-y:auto">
-            <span style="font-size:3rem">${post.image}</span>
+            ${String(post.image || '').startsWith('http')
+              ? `<img src="${DOM.escapeHtml(post.image)}" alt="${DOM.escapeHtml(post.title)}" style="max-width:100%;max-height:180px;object-fit:contain">`
+              : `<span style="font-size:3rem">${post.image || '🍲'}</span>`}
             <span class="blog-card__tag">${DOM.escapeHtml(post.category)}</span>
             <h2>${DOM.escapeHtml(post.title)}</h2>
             <p class="blog-card__date">${Format.date(post.date)}</p>

@@ -101,6 +101,32 @@ App.ready().then(async () => {
       : '<p style="color:var(--color-text-muted)">No reviews yet. Be the first!</p>';
   }
 
+  const user = API.user.getCurrent();
+  const reviewForm = DOM.$('#review-form');
+  if (reviewForm && user) {
+    reviewForm.hidden = false;
+    reviewForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const rating = parseInt(DOM.$('#review-rating').value, 10);
+      const comment = DOM.$('#review-comment').value.trim();
+      if (!rating || !comment) return;
+      const result = await API.reviews.add({
+        productId,
+        userId: user.id,
+        userName: user.name,
+        rating,
+        comment
+      });
+      if (result.success) {
+        Components.toast('Review submitted');
+        reviewForm.reset();
+        reviewForm.hidden = true;
+      } else {
+        DOM.$('#review-error').textContent = result.error || 'Could not submit review.';
+      }
+    });
+  }
+
   const relatedEl = DOM.$('#related-products');
   if (relatedEl) {
     const { data: all } = await API.catalog.getProducts({ categoryId: product.categoryId });
