@@ -104,13 +104,8 @@ App.ready().then(async () => {
 
   function renderOrdersTable(orders, compact, tableId) {
     if (!orders.length) return '<p style="color:var(--color-text-muted)">No orders yet.</p>';
-<<<<<<< HEAD
-    return `<table class="admin-table">
+    return `<table class="admin-table"${tableId ? ` id="${tableId}"` : ''}>
       <thead><tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Status</th>${compact ? '' : '<th>Update Status</th><th></th>'}</tr></thead>
-=======
-    return `<table class="admin-table" id="${tableId}">
-      <thead><tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Status</th>${compact ? '' : '<th>Update Status</th>'}</tr></thead>
->>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
       <tbody>${orders.map(o => `
         <tr data-status="${o.status.toLowerCase()}">
           <td>${o.id}</td>
@@ -152,7 +147,6 @@ App.ready().then(async () => {
         <div class="stat-card"><div class="stat-card__value">${stats.lowStock}</div><div class="stat-card__label">Low Stock Items</div></div>
       </div>
       <h2>Recent Orders</h2>
-<<<<<<< HEAD
       ${renderOrdersTable(recentOrders.slice(0, 5), true)}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1.5rem">
         <h2 style="margin:0">Recent Activity</h2>
@@ -164,10 +158,6 @@ App.ready().then(async () => {
           <tr><td>${Format.dateTime(l.timestamp)}</td><td>${l.admin || '—'}</td><td>${l.action}</td><td>${JSON.stringify(l.details)}</td></tr>
         `).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted)">No recent activity</td></tr>'}</tbody>
       </table>`);
-=======
-      ${renderSearchBar('dashboard-order-search', 'Search recent orders...')}
-      ${renderOrdersTable(recentOrders.slice(0, 5), true, 'dashboard-orders-table')}`);
->>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
     bindOrderActions();
     bindTableSearch('dashboard-order-search', 'dashboard-orders-table', 'No recent orders match your search.');
   }
@@ -176,10 +166,23 @@ App.ready().then(async () => {
     const { data: orders } = await API.order.getAll();
     renderLayout(`
       <div class="admin-header"><h1>Order Management</h1></div>
-<<<<<<< HEAD
-      ${renderOrdersTable(orders)}
+      <div class="admin-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
+        <input id="orders-search" type="search" placeholder="Search orders..." aria-label="Search orders" style="flex:1;min-width:180px;padding:0.5rem">
+        <select id="orders-status-filter" aria-label="Filter orders by status" style="padding:0.5rem">
+          <option value="">All Statuses</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="pending">Pending</option>
+          <option value="preparing">Preparing</option>
+        </select>
+      </div>
+      ${renderOrdersTable(orders, false, 'orders-table')}
       <div id="order-detail" style="margin-top:1.5rem"></div>`);
     bindOrderActions();
+    const applyOrderFilter = bindTableSearch('orders-search', 'orders-table', 'No orders match your filters.', row => {
+      const status = DOM.$('#orders-status-filter').value;
+      return !status || row.dataset.status === status;
+    });
+    DOM.$('#orders-status-filter').addEventListener('change', applyOrderFilter);
 
     DOM.$$('.view-order').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -244,27 +247,6 @@ App.ready().then(async () => {
         }
       });
     }
-=======
-      <div class="admin-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
-        <input id="order-search" type="search" placeholder="Search orders..." aria-label="Search orders..." style="flex:1;min-width:180px;padding:0.5rem">
-        <select id="order-status-filter" aria-label="Filter orders by status" style="padding:0.5rem">
-          <option value="">All Statuses</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="pending">Pending</option>
-          <option value="preparing">Preparing</option>
-        </select>
-      </div>
-      ${renderOrdersTable(orders, false, 'orders-table')}`);
-    bindOrderActions();
-    const orderStatusFilter = DOM.$('#order-status-filter');
-    const applyOrderFilters = bindTableSearch(
-      'order-search',
-      'orders-table',
-      'No orders match your filters.',
-      row => !orderStatusFilter.value || row.dataset.status === orderStatusFilter.value
-    );
-    orderStatusFilter.addEventListener('change', applyOrderFilters);
->>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
   }
 
 if (view === 'products') {
@@ -283,8 +265,11 @@ if (view === 'products') {
         return true;
       });
       const stockOf = p => p.variants.reduce((s, v) => s + v.stock, 0);
+      const priceOf = p => Math.min(...p.variants.map(v => v.price));
       if (filters.sort === 'stock-desc') result = [...result].sort((a, b) => stockOf(b) - stockOf(a));
       else if (filters.sort === 'stock-asc') result = [...result].sort((a, b) => stockOf(a) - stockOf(b));
+      else if (filters.sort === 'price-desc') result = [...result].sort((a, b) => priceOf(b) - priceOf(a));
+      else if (filters.sort === 'price-asc') result = [...result].sort((a, b) => priceOf(a) - priceOf(b));
       else if (filters.sort === 'name-asc') result = [...result].sort((a, b) => a.name.localeCompare(b.name));
       return result;
     }
@@ -382,7 +367,6 @@ if (view === 'products') {
           stock: parseInt(row.querySelector('.pe-v-stock').value, 10) || 0
         }));
         if (!variants.length || variants.some(v => !v.unit)) { errorEl.textContent = 'Every variant needs a unit.'; return; }
-
         const payload = {
           name,
           categoryId: DOM.$('#pe-category').value,
@@ -422,12 +406,6 @@ if (view === 'products') {
           <option value="active">Active</option>
           <option value="out_of_stock">Out of Stock</option>
         </select>
-        <select id="filter-sort" style="padding:0.5rem">
-          <option value="">Sort: Default</option>
-          <option value="stock-desc">Stock: High to Low</option>
-          <option value="stock-asc">Stock: Low to High</option>
-          <option value="name-asc">Name: A to Z</option>
-        </select>
       </div>
       ${allTags.length ? `
       <div class="admin-filters" style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
@@ -435,7 +413,7 @@ if (view === 'products') {
         ${allTags.map(t => `<button type="button" class="tag-filter-pill ${filters.tag === t ? 'active' : ''}" data-tag="${DOM.escapeHtml(t)}">${DOM.escapeHtml(t)}</button>`).join('')}
       </div>` : ''}
       <table class="admin-table">
-        <thead><tr><th>Product</th><th>Category</th><th>Price Range</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Product</th><th>Category</th><th>Price Range <button type="button" class="column-sort" data-sort-key="price" aria-label="Sort by price range">↕</button></th><th>Stock <button type="button" class="column-sort" data-sort-key="stock" aria-label="Sort by stock">↕</button></th><th>Status <button type="button" class="column-sort" data-sort-key="status" aria-label="Sort by status">↕</button></th><th>Actions</th></tr></thead>
         <tbody id="products-table-body"></tbody>
       </table>
       <div id="product-editor" class="admin-form" hidden></div>`);
@@ -443,7 +421,17 @@ if (view === 'products') {
     DOM.$('#filter-search').addEventListener('input', e => { filters.search = e.target.value; renderProductsTable(); });
     DOM.$('#filter-category').addEventListener('change', e => { filters.categoryId = e.target.value; renderProductsTable(); });
     DOM.$('#filter-status').addEventListener('change', e => { filters.status = e.target.value; renderProductsTable(); });
-    DOM.$('#filter-sort').addEventListener('change', e => { filters.sort = e.target.value; renderProductsTable(); });
+    DOM.$$('.column-sort').forEach(button => button.addEventListener('click', () => {
+      const sortKey = button.dataset.sortKey;
+      const ascending = filters.sort !== `${sortKey}-asc`;
+      filters.sort = `${sortKey}-${ascending ? 'asc' : 'desc'}`;
+      DOM.$$('.column-sort').forEach(otherButton => {
+        const isActive = otherButton === button;
+        otherButton.textContent = isActive ? (ascending ? '↑' : '↓') : '↕';
+        otherButton.setAttribute('aria-label', `Sort by ${otherButton.dataset.sortKey} ${isActive ? (ascending ? 'ascending' : 'descending') : ''}`.trim());
+      });
+      renderProductsTable();
+    }));
     DOM.$$('.tag-filter-pill').forEach(btn => {
       btn.addEventListener('click', () => {
         filters.tag = btn.dataset.tag;
@@ -503,7 +491,6 @@ if (view === 'products') {
     const allRows = [...users, ...adminOnlyRows];
 
     renderLayout(`
-<<<<<<< HEAD
       <div class="admin-header"><h1>Customers</h1><span>${allRows.length} registered</span></div>
       <table class="admin-table">
         <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th><th>Orders</th><th>Role</th></tr></thead>
@@ -707,18 +694,6 @@ if (view === 'products') {
         errorEl.textContent = err.message || 'Could not save. Please try again.';
       }
     });
-=======
-      <div class="admin-header"><h1>Customers</h1><span>${users.length} registered</span></div>
-      ${renderSearchBar('user-search', 'Search customers...')}
-      <table class="admin-table" id="users-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th><th>Orders</th></tr></thead>
-        <tbody>${(await Promise.all(users.map(async u => {
-          const { data: userOrders } = await API.order.getAll({ userId: u.id });
-          return `<tr><td>${DOM.escapeHtml(u.name)}</td><td>${DOM.escapeHtml(u.email)}</td><td>${DOM.escapeHtml(u.phone || '—')}</td><td>${Format.date(u.createdAt)}</td><td>${userOrders.length}</td></tr>`;
-        }))).join('')}</tbody>
-      </table>`);
-    bindTableSearch('user-search', 'users-table', 'No customers match your search.');
->>>>>>> d322543de4d165c49445e9af26f2df932dd8f8b3
   }
 
   if (view === 'audit') {
