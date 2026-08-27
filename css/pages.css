@@ -8,16 +8,6 @@
   position: relative;
   overflow: hidden;
 }
-.hero::after {
-  content: '🥬🍎🦐🥩🍚';
-  position: absolute;
-  right: -2rem;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 8rem;
-  opacity: 0.12;
-  letter-spacing: 1rem;
-}
 .hero__content {
   max-width: 600px;
   position: relative;
@@ -26,6 +16,20 @@
 .hero__content h1 { margin-bottom: 0.75rem; }
 .hero__content p { font-size: 1.1rem; opacity: 0.9; margin-bottom: 1.5rem; }
 .hero__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.hero__images {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  z-index: 0;
+}
+.hero__images img {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  object-fit: cover;
+  opacity: 0.62;
+}
 
 /* Category shortcuts */
 .categories-grid {
@@ -632,6 +636,9 @@
   .cart-item { grid-template-columns: 50px 1fr; }
   .cart-item__price { grid-column: 2; }
   .admin-sidebar { display: none; }
+  .hero__images {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 /* Address map + geocoding suggestions (checkout page) */
