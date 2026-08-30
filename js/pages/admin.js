@@ -107,11 +107,12 @@ App.ready().then(async () => {
   function renderOrdersTable(orders, compact, tableId) {
     if (!orders.length) return '<p style="color:var(--color-text-muted)">No orders yet.</p>';
     return `<table class="admin-table"${tableId ? ` id="${tableId}"` : ''}>
-      <thead><tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Status</th>${compact ? '' : '<th>Update Status</th><th></th>'}</tr></thead>
+      <thead><tr><th>Order ID</th><th>Customer</th><th>Date Placed</th><th>Total</th><th>Status</th>${compact ? '' : '<th>Update Status</th><th></th>'}</tr></thead>
       <tbody>${orders.map(o => `
-        <tr data-status="${o.status.toLowerCase()}">
+        <tr data-status="${o.status.toLowerCase()}" data-created="${o.createdAt || ''}">
           <td>${o.id}</td>
           <td>${DOM.escapeHtml(o.userName || 'Guest')}</td>
+          <td>${o.createdAt ? Format.dateTime(o.createdAt) : '—'}</td>
           <td>${Format.currency(o.total)}</td>
           <td><span class="order-status order-status--${o.status.replace(/ /g, '\\ ')}">${o.status}</span></td>
           ${compact ? '' : `<td><select class="status-select" data-id="${o.id}">
@@ -172,19 +173,41 @@ App.ready().then(async () => {
         <input id="orders-search" type="search" placeholder="Search orders..." aria-label="Search orders" style="flex:1;min-width:180px;padding:0.5rem">
         <select id="orders-status-filter" aria-label="Filter orders by status" style="padding:0.5rem">
           <option value="">All Statuses</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="pending">Pending</option>
-          <option value="preparing">Preparing</option>
+          ${CONFIG.orderStatuses.map(s => `<option value="${s.toLowerCase()}">${s}</option>`).join('')}
         </select>
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--color-text-muted)">From
+          <input id="orders-date-from" type="date" aria-label="Filter orders from date" style="padding:0.5rem">
+        </label>
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--color-text-muted)">To
+          <input id="orders-date-to" type="date" aria-label="Filter orders to date" style="padding:0.5rem">
+        </label>
+        <button class="btn btn--outline btn--sm" id="orders-filter-clear" type="button">Clear</button>
       </div>
       ${renderOrdersTable(orders, false, 'orders-table')}
       <div id="order-detail" style="margin-top:1.5rem"></div>`);
     bindOrderActions();
     const applyOrderFilter = bindTableSearch('orders-search', 'orders-table', 'No orders match your filters.', row => {
       const status = DOM.$('#orders-status-filter').value;
-      return !status || row.dataset.status === status;
+      if (status && row.dataset.status !== status) return false;
+
+      const created = row.dataset.created ? new Date(row.dataset.created) : null;
+      const fromVal = DOM.$('#orders-date-from').value;
+      const toVal = DOM.$('#orders-date-to').value;
+      if (fromVal && (!created || created < new Date(fromVal + 'T00:00:00'))) return false;
+      if (toVal && (!created || created > new Date(toVal + 'T23:59:59'))) return false;
+
+      return true;
     });
     DOM.$('#orders-status-filter').addEventListener('change', applyOrderFilter);
+    DOM.$('#orders-date-from').addEventListener('change', applyOrderFilter);
+    DOM.$('#orders-date-to').addEventListener('change', applyOrderFilter);
+    DOM.$('#orders-filter-clear').addEventListener('click', () => {
+      DOM.$('#orders-search').value = '';
+      DOM.$('#orders-status-filter').value = '';
+      DOM.$('#orders-date-from').value = '';
+      DOM.$('#orders-date-to').value = '';
+      applyOrderFilter();
+    });
 
     DOM.$$('.view-order').forEach(btn => {
       btn.addEventListener('click', async () => {

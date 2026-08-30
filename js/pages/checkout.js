@@ -53,7 +53,7 @@ App.ready().then(async () => {
         <form id="new-address-form" style="margin-top:1rem">
           <div class="form-group"><label>Label</label><input name="label" placeholder="Home, Office…" required></div>
           <div class="form-group"><label>Region</label>
-            <select id="addr-region" required><option value="">Loading regions…</option></select>
+            <select id="addr-region" required><option value="">Select region…</option></select>
           </div>
           <div class="form-group" id="addr-province-group"><label>Province</label>
             <select id="addr-province" required disabled><option value="">Select a region first</option></select>
@@ -76,9 +76,7 @@ App.ready().then(async () => {
             <div id="address-map" style="height:280px;border-radius:8px;overflow:hidden;border:1px solid var(--color-border)"></div>
             <p id="addr-confirmed-text" style="font-size:0.85rem;color:var(--color-text-muted);margin-top:0.4rem">Select region → province → city → barangay to position the map.</p>
           </div>
-          <div class="form-group"><label>Delivery Zone</label>
-            <select name="zoneId">${CONFIG.deliveryZones.map(z => `<option value="${z.id}">${z.name} (${Format.currency(z.fee)})</option>`).join('')}</select>
-          </div>
+          <input type="hidden" name="zoneId" id="addr-zone-hidden" value="${CONFIG.deliveryZones[0].id}">
           <button type="submit" class="btn btn--outline btn--sm">Add Address</button>
         </form>
         <button class="btn btn--primary" style="margin-top:1rem" id="next-step" ${!user.addresses?.length ? 'disabled' : ''}>Continue to Delivery</button>`;
@@ -93,8 +91,14 @@ App.ready().then(async () => {
         }
       });
 
-      // ---- PSGC cascading dropdowns ----
+      // ---- PSGC cascading dropdowns (local static dataset, no network dependency) ----
       let selectedRegion = null, selectedProvince = null, selectedCity = null, selectedBarangay = null;
+
+      // Each supported region maps 1:1 to a single delivery zone — no manual
+      // zone picking needed, it's fully determined by the region selected above.
+      function zoneIdForRegion(regionCode) {
+        return regionCode === 'RIZAL' ? 'rizal' : 'metro-manila';
+      }
 
       function fillSelect(el, items, placeholder) {
         el.innerHTML = `<option value="">${placeholder}</option>` +
@@ -102,17 +106,13 @@ App.ready().then(async () => {
         el.disabled = false;
       }
 
-      PSGC.getRegions()
-        .then(regions => fillSelect(DOM.$('#addr-region'), regions, 'Select region…'))
-        .catch(err => {
-          console.error('PSGC regions failed to load:', err);
-          DOM.$('#addr-region').innerHTML = '<option value="">Could not load regions — check your connection</option>';
-        });
+      PSGC.getRegions().then(regions => fillSelect(DOM.$('#addr-region'), regions, 'Select region…'));
 
       DOM.$('#addr-region').addEventListener('change', async e => {
         const code = e.target.value;
         selectedRegion = e.target.options[e.target.selectedIndex]?.text || '';
         DOM.$('#addr-region-hidden').value = selectedRegion;
+        DOM.$('#addr-zone-hidden').value = zoneIdForRegion(code);
         const provinceSelect = DOM.$('#addr-province');
         const citySelect = DOM.$('#addr-city-select');
         const barangaySelect = DOM.$('#addr-barangay');
@@ -120,20 +120,15 @@ App.ready().then(async () => {
         barangaySelect.innerHTML = '<option value="">Select a city first</option>'; barangaySelect.disabled = true;
         if (!code) { provinceSelect.innerHTML = '<option value="">Select a region first</option>'; provinceSelect.disabled = true; return; }
 
-        try {
-          const provinces = await PSGC.getProvinces(code);
-          if (!provinces.length) {
-            // No provinces (e.g. NCR) — cities/municipalities sit directly under the region.
-            provinceSelect.innerHTML = '<option value="">N/A for this region</option>';
-            provinceSelect.disabled = true;
-            const cities = await PSGC.getCitiesMunicipalities(code);
-            fillSelect(citySelect, cities, 'Select city/municipality…');
-          } else {
-            fillSelect(provinceSelect, provinces, 'Select province…');
-          }
-        } catch (err) {
-          console.error('PSGC provinces failed to load:', err);
-          provinceSelect.innerHTML = '<option value="">Could not load — try again</option>';
+        const provinces = await PSGC.getProvinces(code);
+        if (!provinces.length) {
+          // No province layer for this region (e.g. Rizal) — cities sit directly under the region.
+          provinceSelect.innerHTML = '<option value="">N/A for this region</option>';
+          provinceSelect.disabled = true;
+          const cities = await PSGC.getCitiesMunicipalities(code);
+          fillSelect(citySelect, cities, 'Select city/municipality…');
+        } else {
+          fillSelect(provinceSelect, provinces, 'Select province…');
         }
       });
 
@@ -145,13 +140,8 @@ App.ready().then(async () => {
         const barangaySelect = DOM.$('#addr-barangay');
         barangaySelect.innerHTML = '<option value="">Select a city first</option>'; barangaySelect.disabled = true;
         if (!code) { citySelect.innerHTML = '<option value="">Select a province first</option>'; citySelect.disabled = true; return; }
-        try {
-          const cities = await PSGC.getCitiesMunicipalities(code);
-          fillSelect(citySelect, cities, 'Select city/municipality…');
-        } catch (err) {
-          console.error('PSGC cities failed to load:', err);
-          citySelect.innerHTML = '<option value="">Could not load — try again</option>';
-        }
+        const cities = await PSGC.getCitiesMunicipalities(code);
+        fillSelect(citySelect, cities, 'Select city/municipality…');
       });
 
       DOM.$('#addr-city-select').addEventListener('change', async e => {
@@ -159,13 +149,8 @@ App.ready().then(async () => {
         selectedCity = e.target.options[e.target.selectedIndex]?.text || '';
         const barangaySelect = DOM.$('#addr-barangay');
         if (!code) { barangaySelect.innerHTML = '<option value="">Select a city first</option>'; barangaySelect.disabled = true; return; }
-        try {
-          const barangays = await PSGC.getBarangays(code);
-          fillSelect(barangaySelect, barangays, 'Select barangay…');
-        } catch (err) {
-          console.error('PSGC barangays failed to load:', err);
-          barangaySelect.innerHTML = '<option value="">Could not load — try again</option>';
-        }
+        const barangays = await PSGC.getBarangays(code);
+        fillSelect(barangaySelect, barangays, 'Select barangay…');
       });
 
       function composeCityField() {

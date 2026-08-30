@@ -40,7 +40,7 @@ App.ready().then(async () => {
       </div>
     `).join('');
 
-    const deliveryFee = await API.delivery.calculateFee(cart.subtotal, 'mm-north');
+    const deliveryFee = await API.delivery.calculateFee(cart.subtotal, CONFIG.deliveryZones[0].id);
     const total = cart.subtotal + deliveryFee;
     const progress = Math.min(100, (cart.subtotal / CONFIG.freeDeliveryThreshold) * 100);
     const remaining = Math.max(0, CONFIG.freeDeliveryThreshold - cart.subtotal);

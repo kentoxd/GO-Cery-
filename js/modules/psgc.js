@@ -1,50 +1,77 @@
 /**
  * js/modules/psgc.js
- * Wraps the free, public Rootscratch PSGC API (Philippine Standard
- * Geographic Code) — no API key required. Used for authoritative
- * region/province/city/barangay dropdowns, since free-text geocoding
- * search alone is unreliable for PH addresses (many barangays and
- * subdivisions aren't well mapped). Docs: https://psgc.rootscratch.com/
+ * Local, offline PSGC (Philippine Standard Geographic Code) lookup —
+ * backed by js/data/psgc-data.js (no external API, no network dependency).
  *
- * IMPORTANT: this API's structure changed at least once already (base
- * path moved from /api/psgc/... to just the root domain, and the id
- * field was renamed from `code` to `psgc_id`). If dropdowns get stuck
- * on "Loading…" again in the future, check https://psgc.rootscratch.com/
- * for the current endpoint shape before assuming it's a bug in this file.
+ * "psgc_id" values here are synthetic pipe-delimited paths (not official
+ * PSGC codes) built purely to identify a node in the local tree — e.g.
+ * "NCR|CITY OF MAKATI" or "RIZAL|ANGONO|SAN ROQUE". They only exist to
+ * chain the next lookup and are never sent anywhere.
  */
 const PSGC = {
-  BASE: 'https://rootscratch.com',
-  _cache: {},
+  _split(id) {
+    return String(id).split('|');
+  },
 
-  async _get(path) {
-    if (this._cache[path]) return this._cache[path];
-    const res = await fetch(`${this.BASE}${path}`, { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`PSGC request failed (${res.status})`);
-    const json = await res.json();
-    // Defensive: handle either a raw array or a {data: [...]}-wrapped response,
-    // since we've already been burned once by this API's shape changing.
-    const items = Array.isArray(json) ? json : (json.data || json.regions || []);
-    this._cache[path] = items;
-    return items;
+  _regionNode(regionId) {
+    return PSGC_DATA[regionId] || null;
+  },
+
+  /** Resolves a pipe-delimited path to its node in the local tree. */
+  _resolve(pathParts) {
+    const [regionId, ...rest] = pathParts;
+    const regionNode = this._regionNode(regionId);
+    if (!regionNode) return null;
+    if (!rest.length) return regionNode;
+
+    if (regionNode.province_list) {
+      const [provinceName, ...rest2] = rest;
+      const provinceNode = regionNode.province_list[provinceName];
+      if (!provinceNode) return null;
+      if (!rest2.length) return provinceNode;
+      const [cityName] = rest2;
+      return provinceNode.municipality_list?.[cityName] || null;
+    }
+
+    const [cityName] = rest;
+    return regionNode.municipality_list?.[cityName] || null;
   },
 
   getRegions() {
-    return this._get('/region');
+    return Promise.resolve([
+      { psgc_id: 'NCR', name: 'Metro Manila (NCR)' },
+      { psgc_id: 'RIZAL', name: 'Rizal Province' }
+    ]);
   },
 
-  /** regionId: the region's `psgc_id` */
+  /** regionId: e.g. "NCR". Returns [] for regions with no province layer
+   *  (e.g. Rizal, where municipalities sit directly under the province). */
   getProvinces(regionId) {
-    return this._get(`/province?id=${regionId}`);
+    const node = this._regionNode(regionId);
+    const list = node?.province_list;
+    if (!list) return Promise.resolve([]);
+    return Promise.resolve(
+      Object.keys(list).map(name => ({ psgc_id: `${regionId}|${name}`, name }))
+    );
   },
 
-  /** provinceId: the province's `psgc_id`. For regions with no provinces
-   *  (e.g. NCR), try the region's id here as a best-effort fallback. */
+  /** parentId: a region id (e.g. "RIZAL") or a "region|province" id */
   getCitiesMunicipalities(parentId) {
-    return this._get(`/municipal-city?id=${parentId}`);
+    const node = this._resolve(this._split(parentId));
+    const list = node?.municipality_list;
+    if (!list) return Promise.resolve([]);
+    return Promise.resolve(
+      Object.keys(list).map(name => ({ psgc_id: `${parentId}|${name}`, name }))
+    );
   },
 
-  /** cityId: the city/municipality's `psgc_id` */
+  /** cityId: a "region|city" or "region|province|city" id */
   getBarangays(cityId) {
-    return this._get(`/barangay?id=${cityId}`);
+    const node = this._resolve(this._split(cityId));
+    const list = node?.barangay_list;
+    if (!list) return Promise.resolve([]);
+    return Promise.resolve(
+      list.map(name => ({ psgc_id: `${cityId}|${name}`, name }))
+    );
   }
 };

@@ -8,10 +8,7 @@
  */
 module.exports = {
   deliveryZones: [
-    { id: 'mm-north', name: 'Metro Manila – North', fee: 99 },
-    { id: 'mm-south', name: 'Metro Manila – South', fee: 99 },
-    { id: 'mm-east', name: 'Metro Manila – East', fee: 99 },
-    { id: 'mm-west', name: 'Metro Manila – West', fee: 99 },
+    { id: 'metro-manila', name: 'Metro Manila (NCR)', fee: 99 },
     { id: 'rizal', name: 'Rizal Province', fee: 149 }
   ],
   deliverySlots: [
