@@ -9,9 +9,9 @@ App.ready().then(async () => {
     sort: params.sort || ''
   };
   const categoryGroups = [
-    { title: 'Fresh Produce', icon: 'https://cdn.discordapp.com/attachments/1488093221014994986/1542473178553786388/image_34.png?ex=6a915b97&is=6a900a17&hm=23dfe2a9834f329d72c93338daa19b72b9e9e0521ed8b1e6ab6718f55744c79b&', className: 'produce', categories: ['fruits', 'vegetables', 'herbs-spices'] },
-    { title: 'Meat, Seafood & Eggs', icon: 'https://cdn.discordapp.com/attachments/1488093221014994986/1542473177920180284/image_35.png?ex=6a915b97&is=6a900a17&hm=0b4581643e68c13093cbc59625832e5861e8a2e2ba1d3ddfdaf1b500fff946a8&', className: 'protein', categories: ['seafood', 'meat', 'eggs-dairy'] },
-    { title: 'Pantry Staples', icon: 'https://cdn.discordapp.com/attachments/1488093221014994986/1542473177245028472/image_36.png?ex=6a915b97&is=6a900a17&hm=e35590fda02c4daf00a4f1b90c3fd6013cbfb1ee79e18a02a6d6c0aa0346980e&', className: 'pantry', categories: ['rice-grains', 'deli', 'essentials'] }
+    { title: 'Fresh Produce', icon: 'https://res.cloudinary.com/qpdb4nqg/image/upload/v1788086568/freshprodicon.png', className: 'produce', categories: ['fruits', 'vegetables', 'herbs-spices'] },
+    { title: 'Meat, Seafood & Eggs', icon: 'https://res.cloudinary.com/qpdb4nqg/image/upload/v1788086566/meatseafoodicon.png', className: 'protein', categories: ['seafood', 'meat', 'eggs-dairy'] },
+    { title: 'Pantry Staples', icon: 'https://res.cloudinary.com/qpdb4nqg/image/upload/v1788086566/pantryicon.png', className: 'pantry', categories: ['rice-grains', 'deli', 'essentials'] }
   ];
   const initialGroup = categoryGroups.find(group => group.categories.includes(filters.categoryId));
   if (initialGroup) filters.categoryId = initialGroup.className;
