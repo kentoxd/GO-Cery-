@@ -15,6 +15,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function orderRef(orderId) {
+      return /databases/$(database)/documents/orders/$(orderId);
+    }
+
     match /products/{id} {
       allow read: if true;
       allow write: if isAdmin();
@@ -22,7 +26,12 @@ service cloud.firestore {
 
     match /reviews/{id} {
       allow read: if true;
-      allow create: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.orderId is string
+        && get(orderRef(request.resource.data.orderId)).data.userId == request.auth.uid
+        && get(orderRef(request.resource.data.orderId)).data.status == 'Delivered'
+        && request.resource.data.productId in get(orderRef(request.resource.data.orderId)).data.productIds;
       allow update, delete: if isAdmin();
     }
 

@@ -21,17 +21,13 @@ App.ready().then(async () => {
   const category = CONFIG.categories.find(c => c.id === product.categoryId);
 
   function render() {
-    const el = DOM.$('#product-detail');
+    DOM.$('#product-image').innerHTML = product.imageUrl
+      ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:12px" onerror="this.style.display='none'">`
+      : product.image;
+
+    const el = DOM.$('#product-info');
     el.innerHTML = `
-      <div class="product-detail__image">${product.imageUrl
-        ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:12px" onerror="this.style.display='none'">`
-        : product.image}</div>
-      <div class="product-detail__info">
         <h1>${DOM.escapeHtml(product.name)}</h1>
-        <div class="product-detail__meta">
-          ${avgRating > 0 ? `<span class="product-card__rating">${'★'.repeat(Math.round(avgRating))} ${avgRating.toFixed(1)} (${reviews.length} reviews)</span> · ` : ''}
-          Origin: ${DOM.escapeHtml(product.origin)}
-        </div>
         <p>${DOM.escapeHtml(product.description)}</p>
         <div class="product-detail__price" id="detail-price">${Format.currency(selectedVariant.price)}</div>
         <small style="color:var(--color-text-muted)">${Format.unitLabel(selectedVariant.unit)}</small>
@@ -56,8 +52,7 @@ App.ready().then(async () => {
             <button id="qty-plus">+</button>
           </div>
           <button class="btn btn--primary btn--lg" id="add-to-cart" ${selectedVariant.stock <= 0 ? 'disabled' : ''}>Add to Cart</button>
-        </div>
-      </div>`;
+        </div>`;
 
     DOM.$('#variant-selector').addEventListener('click', e => {
       const btn = e.target.closest('.variant-btn');
@@ -84,6 +79,15 @@ App.ready().then(async () => {
 
   render();
 
+  const summaryEl = DOM.$('#reviews-summary');
+  if (summaryEl) {
+    summaryEl.innerHTML = avgRating > 0
+      ? `<span class="reviews-summary__stars">${'★'.repeat(Math.round(avgRating))}${'☆'.repeat(5 - Math.round(avgRating))}</span>
+         <span class="reviews-summary__score">${avgRating.toFixed(1)}</span>
+         <span class="reviews-summary__count">(${reviews.length} review${reviews.length === 1 ? '' : 's'})</span>`
+      : `<span class="reviews-summary__count">No reviews yet</span>`;
+  }
+
   const reviewsEl = DOM.$('#reviews-list');
   if (reviewsEl) {
     reviewsEl.innerHTML = reviews.length
@@ -102,8 +106,24 @@ App.ready().then(async () => {
 
   const user = API.user.getCurrent();
   const reviewForm = DOM.$('#review-form');
-  if (reviewForm && user) {
-    reviewForm.hidden = false;
+  const reviewGate = DOM.$('#review-gate');
+  if (reviewForm) {
+    if (!user) {
+      reviewGate.innerHTML = `<p class="review-gate">Please <a href="${DOM.escapeHtml(Components._root())}pages/login.html">log in</a> to write a review.</p>`;
+    } else {
+      const [eligibleOrder, alreadyReviewed] = await Promise.all([
+        API.reviews.getEligibleOrder(user.id, productId),
+        API.reviews.hasReviewed(user.id, productId)
+      ]);
+      if (alreadyReviewed) {
+        reviewGate.innerHTML = `<p class="review-gate">You\u2019ve already reviewed this product. Thanks for sharing your feedback!</p>`;
+      } else if (!eligibleOrder) {
+        reviewGate.innerHTML = `<p class="review-gate">You can review this product once it\u2019s marked <strong>Delivered</strong> on one of your orders.</p>`;
+      } else {
+        reviewForm.hidden = false;
+      }
+    }
+
     reviewForm.addEventListener('submit', async e => {
       e.preventDefault();
       const rating = parseInt(DOM.$('#review-rating').value, 10);
@@ -120,6 +140,7 @@ App.ready().then(async () => {
         Components.toast('Review submitted');
         reviewForm.reset();
         reviewForm.hidden = true;
+        reviewGate.innerHTML = `<p class="review-gate">You\u2019ve already reviewed this product. Thanks for sharing your feedback!</p>`;
       } else {
         DOM.$('#review-error').textContent = result.error || 'Could not submit review.';
       }
@@ -129,7 +150,7 @@ App.ready().then(async () => {
   const relatedEl = DOM.$('#related-products');
   if (relatedEl) {
     const { data: all } = await API.catalog.getProducts({ categoryId: product.categoryId });
-    const related = all.filter(p => p.id !== product.id).slice(0, 4);
+    const related = all.filter(p => p.id !== product.id).slice(0, 2);
     relatedEl.innerHTML = await Components.productCardsHtml(related, { showAdd: true });
   }
 });

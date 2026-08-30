@@ -335,6 +335,7 @@ const API = {
           userId: user.id,
           userName: userData.name || userData.email,
           items: pricing.items,
+          productIds: [...new Set(pricing.items.map(i => i.productId))],
           subtotal: pricing.subtotal,
           discount: pricing.discount,
           promoCode: pricing.promoCode,
@@ -552,6 +553,31 @@ const API = {
       return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
     },
 
+    /**
+     * Returns the first Delivered order (if any) placed by this user that
+     * contains the given product — required before they're allowed to review it.
+     */
+    async getEligibleOrder(userId, productId) {
+      if (!userId) return null;
+      const snap = await FirebaseApp.collections.orders()
+        .where('userId', '==', userId)
+        .where('status', '==', 'Delivered')
+        .where('productIds', 'array-contains', productId)
+        .limit(1)
+        .get();
+      return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+    },
+
+    async hasReviewed(userId, productId) {
+      if (!userId) return false;
+      const snap = await FirebaseApp.collections.reviews()
+        .where('userId', '==', userId)
+        .where('productId', '==', productId)
+        .limit(1)
+        .get();
+      return !snap.empty;
+    },
+
     async getAverageRating(productId) {
       const { data } = await this.getByProduct(productId);
       if (!data.length) return 0;
@@ -559,10 +585,22 @@ const API = {
     },
 
     async add(review) {
+      const user = API.user.getCurrent();
+      if (!user) return { success: false, error: 'You must be logged in to write a review.' };
+
+      const eligibleOrder = await this.getEligibleOrder(user.id, review.productId);
+      if (!eligibleOrder) {
+        return { success: false, error: 'You can only review a product after it has been delivered to you.' };
+      }
+      if (await this.hasReviewed(user.id, review.productId)) {
+        return { success: false, error: 'You\u2019ve already reviewed this product.' };
+      }
+
       const ref = FirebaseApp.collections.reviews().doc();
       const data = {
         ...review,
         id: ref.id,
+        orderId: eligibleOrder.id,
         date: new Date().toISOString().split('T')[0]
       };
       await ref.set(data);

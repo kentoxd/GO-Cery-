@@ -224,6 +224,15 @@ App.ready().then(async () => {
           <p><strong>Customer:</strong> ${DOM.escapeHtml(order.userName || 'Guest')}</p>
           <p><strong>Delivery:</strong> ${Format.date(order.deliveryDate)} · ${order.deliverySlot} · ${order.zone}</p>
           <p><strong>Address:</strong> ${order.address ? DOM.escapeHtml(order.address.street) + ', ' + DOM.escapeHtml(order.address.city) : 'N/A'}</p>
+          ${order.address?.lat && order.address?.lng ? `
+            <div class="order-location">
+              <div class="order-location__map" id="order-location-map"></div>
+              <a class="btn btn--outline btn--sm" style="margin-top:0.5rem"
+                 href="https://www.google.com/maps?q=${order.address.lat},${order.address.lng}" target="_blank" rel="noopener">
+                📍 Open pinned location in Google Maps
+              </a>
+            </div>` : `
+            <p style="font-size:0.85rem;color:var(--color-text-muted)">No pinned delivery location saved for this order.</p>`}
           <p><strong>Payment Method:</strong> ${order.paymentMethod}</p>
           <p><strong>Payment Status:</strong> ${order.paymentStatus || '—'}</p>
 
@@ -235,6 +244,20 @@ App.ready().then(async () => {
 
           <button class="btn btn--outline btn--sm" id="close-order-detail" style="margin-top:1rem">Close</button>
         </div>`;
+
+      if (order.address?.lat && order.address?.lng && window.mapboxgl && CONFIG.mapboxToken && !CONFIG.mapboxToken.includes('YOUR_')) {
+        mapboxgl.accessToken = CONFIG.mapboxToken;
+        const { lat, lng } = order.address;
+        const dispatchMap = new mapboxgl.Map({
+          container: 'order-location-map',
+          style: 'mapbox://styles/mapbox/streets-v12',
+          center: [lng, lat],
+          zoom: 16,
+          interactive: false // read-only dispatch view — not for repositioning
+        });
+        dispatchMap.on('load', () => dispatchMap.resize());
+        new mapboxgl.Marker({ color: '#2d6a4f' }).setLngLat([lng, lat]).addTo(dispatchMap);
+      }
 
       DOM.$('#close-order-detail').addEventListener('click', () => { DOM.$('#order-detail').innerHTML = ''; });
 

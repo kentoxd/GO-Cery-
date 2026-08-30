@@ -35,6 +35,7 @@ const CONFIG = {
     currentAdmin: 'gocery_current_admin',
     auditLog: 'gocery_audit_log',
     wishlist: 'gocery_wishlist',
+    recipeFavorites: 'gocery_recipe_favorites',
     initialized: 'gocery_initialized'
   },
   deliveryZones: [

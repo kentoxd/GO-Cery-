@@ -125,7 +125,12 @@ const Components = {
           <p class="product-card__price">${priceDisplay}</p>
           <div class="product-card__actions">
             ${inStock && options.showAdd
-              ? `<button class="btn btn--primary btn--sm add-to-cart-btn" data-id="${product.id}" data-variant="${product.variants[0].id}">Add to Cart</button>`
+              ? `<div class="qty-stepper qty-stepper--sm">
+                   <button type="button" class="card-qty-minus">−</button>
+                   <span class="card-qty-value">1</span>
+                   <button type="button" class="card-qty-plus">+</button>
+                 </div>
+                 <button class="btn btn--primary btn--sm add-to-cart-btn" data-id="${product.id}" data-variant="${product.variants[0].id}">Add to Cart</button>`
               : ''}
             ${user ? `<button class="btn btn--ghost btn--sm wishlist-btn ${wishlisted ? 'active' : ''}" data-id="${product.id}" title="Wishlist">${wishlisted ? '❤️' : '🤍'}</button>` : ''}
           </div>
@@ -174,12 +179,28 @@ const Components = {
 
   bindGlobalEvents() {
     document.addEventListener('click', async e => {
+      const qtyMinus = e.target.closest('.card-qty-minus');
+      const qtyPlus = e.target.closest('.card-qty-plus');
+      if (qtyMinus || qtyPlus) {
+        const stepper = (qtyMinus || qtyPlus).closest('.qty-stepper');
+        const valueEl = stepper?.querySelector('.card-qty-value');
+        if (valueEl) {
+          let qty = parseInt(valueEl.textContent, 10) || 1;
+          qty = qtyPlus ? qty + 1 : Math.max(1, qty - 1);
+          valueEl.textContent = qty;
+        }
+        return;
+      }
       if (e.target.closest('.add-to-cart-btn')) {
         const btn = e.target.closest('.add-to-cart-btn');
+        const card = btn.closest('.product-card');
+        const qtyEl = card?.querySelector('.card-qty-value');
+        const qty = qtyEl ? (parseInt(qtyEl.textContent, 10) || 1) : 1;
         const user = API.user.getCurrent();
-        await API.cart.add(user?.id || null, btn.dataset.id, btn.dataset.variant, 1);
-        Components.toast('Added to cart!');
+        await API.cart.add(user?.id || null, btn.dataset.id, btn.dataset.variant, qty);
+        Components.toast(`Added ${qty > 1 ? qty + 'x ' : ''}to cart!`);
         Components.updateCartBadge();
+        if (qtyEl) qtyEl.textContent = '1';
       }
       if (e.target.closest('.wishlist-btn')) {
         const btn = e.target.closest('.wishlist-btn');
