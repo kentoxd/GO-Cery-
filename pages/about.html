@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://www.gstatic.com">
+  <link rel="preconnect" href="https://res.cloudinary.com">
   <title>About Us – Go! Cery</title>
   <link rel="stylesheet" href="../css/main.css">
   <link rel="stylesheet" href="../css/pages.css">
@@ -29,28 +31,29 @@
             </div>
           </article>
         </div>
-        <img class="about-hero__image" src="https://res.cloudinary.com/irdmobtq/image/upload/v1788018155/image_54_iatvgk.png" alt="Fresh palengke produce basket">
+        <img class="about-hero__image" src="https://res.cloudinary.com/irdmobtq/image/upload/f_auto,q_auto/v1788018155/image_54_iatvgk.png" alt="Fresh palengke produce basket">
       </div>
     </section>
   </main>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="../js/config.js"></script>
-  <script src="../js/config.firebase.js"></script>
-  <script src="../js/utils/storage.js"></script>
-  <script src="../js/utils/format.js"></script>
-  <script src="../js/utils/dom.js"></script>
-  <script src="../js/data/seed.js"></script>
-  <script src="../js/modules/firebase.js"></script>
-  <script src="../js/modules/api.js"></script>
-  <script src="../js/components/ui.js"></script>
-  <script src="../js/app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
+  <script src="../js/config.js" defer></script>
+  <script src="../js/config.firebase.js" defer></script>
+  <script src="../js/utils/storage.js" defer></script>
+  <script src="../js/utils/format.js" defer></script>
+  <script src="../js/utils/dom.js" defer></script>
+  <script src="../js/data/seed.js" defer></script>
+  <script src="../js/modules/firebase.js" defer></script>
+  <script src="../js/modules/api.js" defer></script>
+  <script src="../js/components/ui.js" defer></script>
+  <script src="../js/app.js" defer></script>
   <script>
-    App.ready().then(async () => {
-      await Components.initLayout('');
-      DOM.$('#about-text').textContent = 'GO! Cery is your one-stop online wet market, sort of thing, made for busy Filipino households who want fresh, quality ingredients without the hassle of a real trip to the palengke. It’s built with a simple easy-to-navigate layout, for shopping online to feel effortless for our target market, basically.';
+  document.addEventListener('DOMContentLoaded', () => {      App.ready().then(async () => {
+        await Components.initLayout('');
+        DOM.$('#about-text').textContent = 'GO! Cery is your one-stop online wet market, sort of thing, made for busy Filipino households who want fresh, quality ingredients without the hassle of a real trip to the palengke. It’s built with a simple easy-to-navigate layout, for shopping online to feel effortless for our target market, basically.';
+      });
     });
-  </script>
+</script>
 </body>
 </html>
