@@ -67,14 +67,14 @@ const CONFIG = {
     { id: 'gold', name: 'Gold Suki', minPoints: 2000, perks: ['Always free delivery', '3x points', 'Early access to promos'] }
   ],
   categories: [
-    { id: 'fruits', name: 'Fruits', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/fru.png', slug: 'fruits' },
-    { id: 'vegetables', name: 'Vegetables', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/veg.png', slug: 'vegetables' },
-    { id: 'herbs-spices', name: 'Herbs & Spices', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/herb.png', slug: 'herbs-spices' },
-    { id: 'seafood', name: 'Fresh Seafood', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/sea.png', slug: 'seafood' },
-    { id: 'meat', name: 'Fresh Meat', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/meat.png', slug: 'meat' },
-    { id: 'rice-grains', name: 'Rice & Grains', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/tice.png', slug: 'rice-grains' },
-    { id: 'eggs-dairy', name: 'Eggs & Dairy', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/egg.png', slug: 'eggs-dairy' },
-    { id: 'deli', name: 'Deli & More', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000264/dely.png', slug: 'deli' },
-    { id: 'essentials', name: 'Essentials', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1788000263/esse.png', slug: 'essentials' }
+    { id: 'fruits', name: 'Fruits', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/fru.png', slug: 'fruits' },
+    { id: 'vegetables', name: 'Vegetables', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/veg.png', slug: 'vegetables' },
+    { id: 'herbs-spices', name: 'Herbs & Spices', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/herb.png', slug: 'herbs-spices' },
+    { id: 'seafood', name: 'Fresh Seafood', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/sea.png', slug: 'seafood' },
+    { id: 'meat', name: 'Fresh Meat', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/meat.png', slug: 'meat' },
+    { id: 'rice-grains', name: 'Rice & Grains', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/tice.png', slug: 'rice-grains' },
+    { id: 'eggs-dairy', name: 'Eggs & Dairy', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/egg.png', slug: 'eggs-dairy' },
+    { id: 'deli', name: 'Deli & More', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000264/dely.png', slug: 'deli' },
+    { id: 'essentials', name: 'Essentials', icon: 'https://res.cloudinary.com/m0uovtom/image/upload/v1788000263/esse.png', slug: 'essentials' }
   ]
 };

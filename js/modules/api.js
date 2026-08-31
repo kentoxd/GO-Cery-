@@ -456,19 +456,16 @@ const API = {
 
   inventory: {
     async deduct(items) {
-      // Run the per-item read+write concurrently instead of one at a time —
-      // each item touches a different product doc, so there's no need to
-      // serialize N sequential round trips to Firestore.
-      await Promise.all(items.map(async ({ productId, variantId, quantity }) => {
+      for (const { productId, variantId, quantity } of items) {
         const ref = FirebaseApp.collections.products().doc(productId);
         const doc = await ref.get();
-        if (!doc.exists) return;
+        if (!doc.exists) continue;
         const product = doc.data();
         const variants = product.variants.map(v =>
           v.id === variantId ? { ...v, stock: Math.max(0, v.stock - quantity) } : v
         );
         await ref.update({ variants });
-      }));
+      }
     },
 
     async updateStock(productId, variantId, stock) {

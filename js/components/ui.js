@@ -22,7 +22,7 @@ const Components = {
       <header class="header">
         <div class="container header__inner">
           <a href="${this._root()}index.html" class="header__logo">
-            <img src="https://res.cloudinary.com/m0uovtom/image/upload/f_auto,q_auto/v1787825182/GOCERY_LOGO.png" width="65" height="55">
+            <img src="https://res.cloudinary.com/m0uovtom/image/upload/v1787825182/GOCERY_LOGO.png" width="65" height="55">
           </a>
           <nav class="header__nav" id="main-nav">
             <a href="${this._root()}pages/shop.html" class="${activePage === 'shop' ? 'active' : ''}">Shop</a>

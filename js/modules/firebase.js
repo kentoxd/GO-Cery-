@@ -82,58 +82,36 @@ const FirebaseApp = {
   },
 
   _listenAuth() {
-    // Resolve as soon as Firebase reports the local auth state (fast, no
-    // network round trip — it reads from IndexedDB persistence). Profile /
-    // admin-role lookups are Firestore reads and are fetched in the
-    // background afterwards so they no longer block the page loader on
-    // every single page load.
     return new Promise(resolve => {
-      let resolved = false;
-      this.auth.onAuthStateChanged((firebaseUser) => {
-        if (!firebaseUser) {
+      this.auth.onAuthStateChanged(async (firebaseUser) => {
+        if (firebaseUser) {
+          const adminDoc = await this.db.collection('admins').doc(firebaseUser.uid).get();
+
+          if (adminDoc.exists) {
+            const adminData = adminDoc.data();
+            API.admin._current = {
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: adminData.name,
+              role: adminData.role
+            };
+            API.user._current = null;
+          } else {
+            const profileDoc = await this.db.collection('users').doc(firebaseUser.uid).get();
+            API.admin._current = null;
+            API.user._current = profileDoc.exists
+              ? { id: firebaseUser.uid, email: firebaseUser.email, ...profileDoc.data() }
+              : { id: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName || '', addresses: [] };
+          }
+        } else {
           API.user._current = null;
           API.admin._current = null;
-          document.dispatchEvent(new CustomEvent('gocery:auth:changed'));
-          if (!resolved) { resolved = true; resolve(); }
-          return;
         }
 
-        // Optimistic placeholder so UI has something to render immediately.
-        API.admin._current = null;
-        API.user._current = {
-          id: firebaseUser.uid,
-          email: firebaseUser.email,
-          name: firebaseUser.displayName || '',
-          addresses: []
-        };
-        if (!resolved) { resolved = true; resolve(); }
-
-        this._loadUserRole(firebaseUser);
+        document.dispatchEvent(new CustomEvent('gocery:auth:changed'));
+        resolve();
       });
     });
-  },
-
-  async _loadUserRole(firebaseUser) {
-    const adminDoc = await this.db.collection('admins').doc(firebaseUser.uid).get();
-
-    if (adminDoc.exists) {
-      const adminData = adminDoc.data();
-      API.admin._current = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email,
-        name: adminData.name,
-        role: adminData.role
-      };
-      API.user._current = null;
-    } else {
-      const profileDoc = await this.db.collection('users').doc(firebaseUser.uid).get();
-      API.admin._current = null;
-      API.user._current = profileDoc.exists
-        ? { id: firebaseUser.uid, email: firebaseUser.email, ...profileDoc.data() }
-        : { id: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName || '', addresses: [] };
-    }
-
-    document.dispatchEvent(new CustomEvent('gocery:auth:changed'));
   },
 
   collections: {
