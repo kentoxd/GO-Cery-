@@ -233,14 +233,6 @@ App.ready().then(async () => {
           ${needsPaymentConfirmation ? `
             <div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;padding:0.75rem;margin-top:1rem">
               <p style="margin:0 0 0.5rem;font-size:0.9rem"><strong>Awaiting manual payment verification</strong> — check your ${DOM.escapeHtml(order.paymentMethod)} app for a payment of ${Format.currency(order.total)} from this customer before confirming.</p>
-              ${order.receiptUrl ? `
-                <a href="${DOM.escapeHtml(order.receiptUrl)}" target="_blank" rel="noopener">
-                  <img src="${DOM.escapeHtml(order.receiptUrl)}" alt="Customer's uploaded payment receipt" style="display:block;width:180px;max-height:220px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px;margin-bottom:0.75rem">
-                </a>
-                <p style="font-size:0.8rem;color:var(--color-text-muted);margin:0 0 0.75rem">Receipt uploaded ${Format.dateTime(order.receiptUploadedAt)} — click to view full size.</p>
-              ` : `
-                <p style="font-size:0.85rem;color:var(--color-text-muted);margin:0 0 0.75rem">No receipt screenshot uploaded by the customer yet.</p>
-              `}
               <button class="btn btn--primary btn--sm" id="confirm-payment-btn">✅ Confirm Payment Received</button>
             </div>` : ''}
 
@@ -266,12 +258,6 @@ App.ready().then(async () => {
             <p style="font-size:0.85rem;color:var(--color-text-muted)">No pinned delivery location saved for this order.</p>`}
           <p><strong>Payment Method:</strong> ${order.paymentMethod}</p>
           <p><strong>Payment Status:</strong> ${order.paymentStatus || '—'}</p>
-          ${!needsPaymentConfirmation && order.receiptUrl ? `
-            <p><strong>Payment Receipt:</strong></p>
-            <a href="${DOM.escapeHtml(order.receiptUrl)}" target="_blank" rel="noopener">
-              <img src="${DOM.escapeHtml(order.receiptUrl)}" alt="Customer's uploaded payment receipt" style="display:block;width:140px;max-height:180px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px">
-            </a>
-          ` : ''}
 
           <h3 style="margin-top:1.5rem">Status History</h3>
           ${(order.statusHistory || []).map(h => `

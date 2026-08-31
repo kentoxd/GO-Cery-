@@ -67,10 +67,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'Pending';
-      allow update: if isAdmin()
-        || (isSignedIn()
-            && resource.data.userId == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['receiptUrl', 'receiptUploadedAt']));
+      allow update: if isAdmin();
     }
 
     match /loyalty/{userId} {

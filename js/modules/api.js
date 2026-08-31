@@ -407,48 +407,6 @@ const API = {
     },
 
     /**
-     * Customer uploads a screenshot of their GCash/Maya payment receipt.
-     * Uploaded directly to Cloudinary (free tier, unsigned upload preset —
-     * see CONFIG.cloudinary) rather than Firebase Storage, which is paid.
-     * The resulting URL is saved on the order so admins can review it before
-     * confirming payment.
-     */
-    async uploadReceipt(orderId, file) {
-      const user = API.user.getCurrent();
-      if (!user) return { success: false, error: 'You must be logged in.' };
-      if (!file) return { success: false, error: 'Please choose an image to upload.' };
-      if (!file.type.startsWith('image/')) return { success: false, error: 'Please upload an image file (JPG, PNG, etc).' };
-      if (file.size > 5 * 1024 * 1024) return { success: false, error: 'Image must be under 5MB.' };
-
-      const doc = await FirebaseApp.collections.orders().doc(orderId).get();
-      if (!doc.exists) return { success: false, error: 'Order not found.' };
-      if (doc.data().userId !== user.id) return { success: false, error: 'This isn\u2019t your order.' };
-
-      const { cloudName, uploadPreset } = CONFIG.cloudinary;
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
-      formData.append('folder', `receipts/${orderId}`);
-
-      let json;
-      try {
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-          method: 'POST',
-          body: formData
-        });
-        json = await res.json();
-        if (!res.ok) throw new Error(json.error?.message || 'Upload failed.');
-      } catch (err) {
-        return { success: false, error: err.message || 'Could not upload receipt. Please try again.' };
-      }
-
-      const receiptUrl = json.secure_url;
-      const receiptUploadedAt = new Date().toISOString();
-      await FirebaseApp.collections.orders().doc(orderId).update({ receiptUrl, receiptUploadedAt });
-      return { success: true, data: { receiptUrl, receiptUploadedAt } };
-    },
-
-    /**
      * Admin confirms manual GCash/Maya payment — deducts stock and awards loyalty.
      */
     async confirmPayment(id) {
