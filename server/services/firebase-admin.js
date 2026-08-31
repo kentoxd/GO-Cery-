@@ -1,17 +1,20 @@
-const admin = require('firebase-admin');
+const { initializeApp, getApps } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getAuth: getAdminAuth } = require('firebase-admin/auth');
 
-if (!admin.apps?.length) {
-  // Cloud Functions uses the default service account automatically.
-  // Locally, set GOOGLE_APPLICATION_CREDENTIALS to your service account JSON path.
-  admin.initializeApp();
+// firebase-admin v12+ dropped the old namespaced admin.auth()/admin.firestore()
+// API in favor of these modular imports — using the old style silently breaks
+// with "admin.auth is not a function" once the package is on v12 or newer.
+if (!getApps().length) {
+  initializeApp();
 }
 
 function getDb() {
-  return admin.firestore();
+  return getFirestore();
 }
 
 function getAuth() {
-  return admin.auth();
+  return getAdminAuth();
 }
 
-module.exports = { admin, getDb, getAuth };
+module.exports = { getDb, getAuth };
