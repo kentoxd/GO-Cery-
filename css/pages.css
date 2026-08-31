@@ -291,26 +291,24 @@
 }
 
 .shop-banner--all {
-  background: #f5f8ee;
-  overflow: hidden;
+  background: none;
 }
 .shop-banner--all .shop-banner__image {
-  background-image: url('https://res.cloudinary.com/qpdb4nqg/image/upload/v1788086566/dailyshop.png');
+  background-image: url('https://media.discordapp.net/attachments/1488093221014994986/1542473179103236107/image_42.png?ex=6a915b97&is=6a900a17&hm=66cf69add8749dc081887d9a4f3d31bf6759b9565a26e8f2da8aa258112a56de&=&format=webp&quality=lossless');
   visibility: visible;
-  background-size: cover;
 }
-.shop-banner--all .shop-banner__image--right { transform: scaleX(-1) scale(1.02); transform-origin: bottom center; }
+.shop-banner--all .shop-banner__image--right { transform: scaleX(-1) scale(1.12); transform-origin: bottom center; }
 .shop-banner--all .shop-banner__content {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.82);
 }
 .shop-banner--produce .shop-banner__image--right {
-  background-image: url('https://res.cloudinary.com/qpdb4nqg/image/upload/v1788086567/freshprod.png');
+  background-image: url('https://cdn.discordapp.com/attachments/1488093221014994986/1542493820690767943/image.png?ex=6a916ed1&is=6a901d51&hm=cb2ea8be004ae8997e84ab570c4e3a28118d5e9d3ba87178a98db9bce027b0c7&');
 }
 .shop-banner--protein .shop-banner__image--right {
-  background-image: url('https://res.cloudinary.com/qpdb4nqg/image/upload/v1788086567/produce.png');
+  background-image: url('https://media.discordapp.net/attachments/1488093221014994986/1542473343481946172/image_50.png?ex=6a915bbe&is=6a900a3e&hm=f0690f6711a650ec2dcdca5c8bc73069acfadd8b1507946586b6ef51b8b374a4&=&format=webp&quality=lossless');
 }
 .shop-banner--pantry .shop-banner__image--right {
-  background-image: url('https://res.cloudinary.com/qpdb4nqg/image/upload/v1788086567/pantry.png');
+  background-image: url('https://cdn.discordapp.com/attachments/1488093221014994986/1542473343788384306/image_53.png?ex=6a915bbe&is=6a900a3e&hm=00ae9d9ad856eaf0f35e60877b854d2d73031d91f86c0c5aede7939ee3cd6554&');
 }
 .shop-banner--produce .shop-banner__image--right,
 .shop-banner--protein .shop-banner__image--right,
@@ -658,6 +656,38 @@
 .track-step__label { font-size: 0.72rem; color: var(--color-text-muted); }
 .track-step.done .track-step__label,
 .track-step.active .track-step__label { color: var(--color-text); font-weight: 600; }
+
+/* Payment receipt panel (customer order detail) */
+.receipt-panel {
+  background: #f8faf6;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+.receipt-panel__status { font-size: 0.9rem; font-weight: 600; margin: 0 0 0.75rem; }
+.receipt-panel__status--paid { color: var(--color-success); }
+.receipt-panel__status--pending { color: #a15c00; }
+.receipt-panel details { margin-bottom: 0.85rem; }
+.receipt-panel summary { cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--color-primary); }
+.receipt-panel__qr {
+  display: block;
+  width: 200px;
+  height: 200px;
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.receipt-panel__upload { border-top: 1px dashed var(--color-border); padding-top: 0.85rem; }
+.receipt-panel__preview {
+  display: block;
+  width: 160px;
+  max-height: 200px;
+  object-fit: cover;
+  margin-top: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
 
 /* Auth pages */
 .contact-page {
