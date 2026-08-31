@@ -17,6 +17,14 @@ const CONFIG = {
   manualPaymentMethods: ['GCash', 'Maya'],
   // Get a free public token at mapbox.com — safe to expose client-side.
   mapboxToken: 'pk.eyJ1Ijoic2lsbHliaXJiIiwiYSI6ImNtcnZ2ZWVjejAwZG8yeXB5Mm94ZHV1ejQifQ.9EL2hIT3HdGPXbsmtyOHVQ',
+  // Used for direct browser uploads of payment receipt screenshots (free tier,
+  // no backend or billing needed — unlike Firebase Storage). To set this up:
+  // Cloudinary Dashboard → Settings → Upload → Upload presets → Add upload
+  // preset → set "Signing Mode" to "Unsigned" → name it and paste that name below.
+  cloudinary: {
+    cloudName: 'irdmobtq',
+    uploadPreset: 'gocery_receipts'
+  },
   orderCutoffHour: 19,
   orderCutoffMinute: 30,
   apiVersion: 'v1',

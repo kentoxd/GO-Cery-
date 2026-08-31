@@ -19,6 +19,66 @@ App.ready().then(async () => {
     }
 
     const statusIdx = CONFIG.orderStatuses.indexOf(order.status);
+    const isManualQr = CONFIG.manualPaymentMethods.includes(order.paymentMethod);
+    const qrCodes = isManualQr ? await API.cms.getPaymentQrCodes() : null;
+    const qrUrl = qrCodes ? (order.paymentMethod === 'GCash' ? qrCodes.gcashQrUrl : qrCodes.mayaQrUrl) : '';
+
+    function receiptPanelInnerHtml() {
+      return `
+        <h3 style="margin:1rem 0 0.5rem">Payment — ${DOM.escapeHtml(order.paymentMethod)}</h3>
+        ${order.paymentStatus === 'paid' ? `
+          <p class="receipt-panel__status receipt-panel__status--paid">✅ Payment confirmed by the seller.</p>
+        ` : `
+          <p class="receipt-panel__status receipt-panel__status--pending">⏳ Awaiting payment verification.</p>
+        `}
+        <details ${qrUrl ? '' : 'hidden'}>
+          <summary>View QR code again</summary>
+          ${qrUrl ? `<img src="${DOM.escapeHtml(qrUrl)}" alt="${DOM.escapeHtml(order.paymentMethod)} QR code" class="receipt-panel__qr">` : ''}
+        </details>
+        <div class="receipt-panel__upload">
+          <label style="font-weight:600;font-size:0.9rem">${order.receiptUrl ? 'Receipt uploaded' : 'Upload a screenshot of your payment receipt'}</label>
+          ${order.receiptUrl ? `
+            <a href="${DOM.escapeHtml(order.receiptUrl)}" target="_blank" rel="noopener">
+              <img src="${DOM.escapeHtml(order.receiptUrl)}" alt="Uploaded payment receipt" class="receipt-panel__preview">
+            </a>
+            <p style="font-size:0.8rem;color:var(--color-text-muted)">Uploaded ${Format.dateTime(order.receiptUploadedAt)}. ${order.paymentStatus !== 'paid' ? 'You can replace it below if needed.' : ''}</p>
+          ` : ''}
+          ${order.paymentStatus !== 'paid' ? `
+            <input type="file" id="receipt-file-input" accept="image/*" style="margin-top:0.5rem">
+            <button class="btn btn--primary btn--sm" id="receipt-upload-btn" style="margin-top:0.5rem">
+              ${order.receiptUrl ? 'Replace Receipt' : 'Upload Receipt'}
+            </button>
+            <p class="form-error" id="receipt-error"></p>
+          ` : ''}
+        </div>`;
+    }
+
+    function bindReceiptPanel() {
+      DOM.$('#receipt-upload-btn')?.addEventListener('click', async () => {
+        const fileInput = DOM.$('#receipt-file-input');
+        const errorEl = DOM.$('#receipt-error');
+        const btn = DOM.$('#receipt-upload-btn');
+        const file = fileInput?.files?.[0];
+        errorEl.textContent = '';
+        if (!file) { errorEl.textContent = 'Please choose an image first.'; return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Uploading…';
+        const result = await API.order.uploadReceipt(order.id, file);
+        if (result.success) {
+          Components.toast('Receipt uploaded! The seller will verify it shortly.');
+          order.receiptUrl = result.data.receiptUrl;
+          order.receiptUploadedAt = result.data.receiptUploadedAt;
+          DOM.$('#receipt-panel').innerHTML = receiptPanelInnerHtml();
+          bindReceiptPanel();
+        } else {
+          errorEl.textContent = result.error || 'Upload failed. Please try again.';
+          btn.disabled = false;
+          btn.textContent = order.receiptUrl ? 'Replace Receipt' : 'Upload Receipt';
+        }
+      });
+    }
+
     DOM.$('#orders-content').innerHTML = `
       <a href="account.html?tab=orders" style="font-size:0.9rem">← Back to Orders</a>
       <div class="order-card" style="margin-top:1rem">
@@ -34,6 +94,7 @@ App.ready().then(async () => {
             </div>
           `).join('')}
         </div>
+        ${isManualQr ? `<div class="receipt-panel" id="receipt-panel">${receiptPanelInnerHtml()}</div>` : ''}
         <h3 style="margin:1rem 0 0.5rem">Items</h3>
         ${order.items.map(i => `<div class="summary-row"><span>${i.quantity}x ${DOM.escapeHtml(i.name)} (${i.unit})</span><span>${Format.currency(i.lineTotal)}</span></div>`).join('')}
         <hr style="margin:1rem 0;border:none;border-top:1px solid var(--color-border)">
@@ -46,6 +107,9 @@ App.ready().then(async () => {
         <p><strong>Address:</strong> ${order.address ? DOM.escapeHtml(order.address.street) + ', ' + DOM.escapeHtml(order.address.city) : 'N/A'}</p>
         <p><strong>Payment:</strong> ${order.paymentMethod}</p>
       </div>`;
+
+    bindReceiptPanel();
+
     return;
   }
 
