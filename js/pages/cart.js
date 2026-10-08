@@ -22,6 +22,14 @@ App.ready().then(async () => {
           <a href="shop.html" class="btn btn--primary" style="margin-top:1rem">Shop Now</a>
         </div>`;
       summaryEl.innerHTML = '';
+      const { data: all } = await API.catalog.getProducts({ featured: true });
+      if (all.length) {
+        itemsEl.insertAdjacentHTML('beforeend', `
+          <h3 style="margin:1.5rem 0 0.75rem">Popular right now</h3>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1rem">
+            ${await Components.productCardsHtml(all.slice(0, 4), { showAdd: true })}
+          </div>`);
+      }
       return;
     }
 

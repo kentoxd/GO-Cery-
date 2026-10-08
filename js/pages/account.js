@@ -87,7 +87,7 @@ App.ready().then(async () => {
 
       const lastSeen = Storage.get(`gocery_notif_seen_${user.id}`, null);
       Storage.set(`gocery_notif_seen_${user.id}`, new Date().toISOString());
-      Components.updateNotifBadge();
+      Components.updateNotifBadge(true);
 
       el.innerHTML = `<h2>Notifications</h2>` +
         (notifications.length ? notifications.map(n => {

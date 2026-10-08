@@ -35,12 +35,16 @@ App.ready().then(async () => {
 
   let step = 1;
   let addressMap = null;
+  // Returning customers: start from the address and payment method they used last time.
+  const lastPick = Storage.get('gocery_last_checkout', {}) || {};
+  const rememberedAddress = (user.addresses || []).some(a => a.id === lastPick.addressId) ? lastPick.addressId : null;
+  const rememberedPayment = CONFIG.paymentMethods.some(m => m.id === lastPick.paymentMethod) ? lastPick.paymentMethod : 'cod';
   let checkoutData = {
-    addressId: user.addresses?.[0]?.id || null,
+    addressId: rememberedAddress || user.addresses?.[0]?.id || null,
     zoneId: CONFIG.deliveryZones[0].id,
     slotId: CONFIG.deliverySlots[0].id,
     deliveryDate: API.delivery.getNextDeliveryDate(),
-    paymentMethod: 'cod',
+    paymentMethod: rememberedPayment,
     promoCode: '',
     discount: 0,
     freeShip: false
@@ -49,7 +53,7 @@ App.ready().then(async () => {
   function renderSteps() {
     const steps = ['Address', 'Delivery', 'Payment', 'Review'];
     DOM.$('#checkout-steps').innerHTML = steps.map((s, i) =>
-      `<div class="checkout-step ${i + 1 === step ? 'active' : ''} ${i + 1 < step ? 'done' : ''}">${i + 1}. ${s}</div>`
+      `<div class="checkout-step ${i + 1 === step ? 'active' : ''} ${i + 1 < step ? 'done' : ''}" ${i + 1 === step ? 'aria-current="step"' : ''}>${i + 1 < step ? '✓' : i + 1}. ${s}</div>`
     ).join('');
   }
 
@@ -98,6 +102,7 @@ App.ready().then(async () => {
           </div>
           <input type="hidden" name="zoneId" id="addr-zone-hidden" value="${CONFIG.deliveryZones[0].id}">
           <button type="submit" class="btn btn--outline btn--sm">Add Address</button>
+          <p class="form-error" id="addr-error" role="alert"></p>
         </form>
         <button class="btn btn--primary" style="margin-top:1rem" id="next-step" ${!user.addresses?.length ? 'disabled' : ''}>Continue to Delivery</button>`;
 
@@ -218,8 +223,10 @@ App.ready().then(async () => {
 
       DOM.$('#new-address-form').addEventListener('submit', async e => {
         e.preventDefault();
+        DOM.$('#addr-error').textContent = '';
         if (!selectedBarangay || !selectedCity) {
-          Components.toast('Please select region, province, city, and barangay.', 'error');
+          DOM.$('#addr-error').textContent = 'Please choose your region, province, city, and barangay from the lists above.';
+          DOM.$('#addr-region').focus();
           return;
         }
         const fd = new FormData(e.target);
@@ -325,6 +332,7 @@ App.ready().then(async () => {
         btn.textContent = 'Processing…';
         errorEl.textContent = '';
 
+        Storage.set('gocery_last_checkout', { addressId: checkoutData.addressId, paymentMethod: checkoutData.paymentMethod });
         const orderPayload = {
           items: cart.items.map(i => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity })),
           addressId: checkoutData.addressId,
@@ -378,7 +386,7 @@ App.ready().then(async () => {
           <h3>Scan to Pay with ${DOM.escapeHtml(methodName)}</h3>
           <p style="color:var(--color-text-muted)">Open your ${DOM.escapeHtml(methodName)} app and scan this QR code to pay the seller directly.</p>
           <div style="text-align:center;margin:1.5rem 0">
-            <img src="${qrUrl}" alt="${DOM.escapeHtml(methodName)} QR code" style="width:260px;height:260px;border:1px solid var(--color-border);border-radius:8px">
+            <img src="${qrUrl}" alt="${DOM.escapeHtml(methodName)} QR code" class="qr-image" style="border:1px solid var(--color-border);border-radius:8px">
           </div>
           <p style="background:#e7f3ff;border:1px solid #b6d7ff;border-radius:6px;padding:0.6rem 0.85rem;font-size:0.85rem">
             Your order has been placed. Payments made this way are confirmed manually — the seller will verify your payment and update your order status once received.

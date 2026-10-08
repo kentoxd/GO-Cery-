@@ -33,6 +33,26 @@ App.ready().then(async () => {
     DOM.$('#shop-banner-subtitle').textContent = theme.subtitle;
   }
 
+  // On phones the filters open as a slide-up panel instead of a sidebar.
+  function setSheet(open) {
+    DOM.$('#shop-sidebar')?.classList.toggle('shop-sidebar--open', open);
+    DOM.$('#shop-sheet-backdrop')?.classList.toggle('shop-sheet-backdrop--open', open);
+    DOM.$('#filter-toggle')?.setAttribute('aria-expanded', String(open));
+  }
+  DOM.$('#filter-toggle')?.addEventListener('click', () => setSheet(true));
+  DOM.$('#shop-sheet-backdrop')?.addEventListener('click', () => setSheet(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setSheet(false); });
+
+  function clearFilters() {
+    filters = { categoryId: '', search: '', inStock: false, sort: '' };
+    DOM.setQueryParams({ category: null, search: null });
+    const searchInput = DOM.$('.search-form input');
+    if (searchInput) searchInput.value = '';
+    renderSidebar();
+    renderBanner();
+    renderProducts();
+  }
+
   function renderSidebar() {
     const sidebar = DOM.$('#shop-sidebar');
     if (!sidebar) return;
@@ -67,6 +87,9 @@ App.ready().then(async () => {
         </select>
       </div>`;
 
+    sidebar.insertAdjacentHTML('beforeend', '<button type="button" class="btn btn--primary shop-sidebar__done" id="filter-done">Show results</button>');
+    DOM.$('#filter-done', sidebar).addEventListener('click', () => setSheet(false));
+
     DOM.$$('input[name="category"]', sidebar).forEach(r => {
       r.addEventListener('change', () => {
         filters.categoryId = r.value;
@@ -92,7 +115,16 @@ App.ready().then(async () => {
     const count = DOM.$('#product-count');
     if (!grid) return;
 
-    const { data: allProducts } = await API.catalog.getProducts({ ...filters, categoryId: '' });
+    grid.innerHTML = Components.skeletonCards(6);
+    let allProducts;
+    try {
+      ({ data: allProducts } = await API.catalog.getProducts({ ...filters, categoryId: '' }));
+    } catch (err) {
+      console.error('Loading products failed:', err);
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state__icon">⚠️</div><h3>We couldn't load the products</h3><p>Please check your connection and try again.</p><button class="btn btn--primary" id="retry-products">Try again</button></div>`;
+      DOM.$('#retry-products')?.addEventListener('click', renderProducts);
+      return;
+    }
     const selectedGroup = categoryGroups.find(group => group.className === filters.categoryId);
     const products = selectedGroup
       ? allProducts.filter(product => selectedGroup.categories.includes(product.categoryId))
@@ -100,7 +132,8 @@ App.ready().then(async () => {
     if (count) count.textContent = `${products.length} product${products.length !== 1 ? 's' : ''}`;
 
     if (!products.length) {
-      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state__icon">🔍</div><h3>No products found</h3><p>Try adjusting your filters or search term.</p></div>`;
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state__icon">🔍</div><h3>No products found</h3><p>Try a different word, or clear your filters to see everything.</p><button class="btn btn--primary" id="clear-filters">Clear filters</button></div>`;
+      DOM.$('#clear-filters')?.addEventListener('click', clearFilters);
       return;
     }
 

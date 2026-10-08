@@ -70,10 +70,22 @@ App.ready().then(async () => {
     });
 
     DOM.$('#add-to-cart').addEventListener('click', async () => {
+      const btn = DOM.$('#add-to-cart');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = 'Adding…';
       const user = API.user.getCurrent();
-      await API.cart.add(user?.id || null, product.id, selectedVariant.id, quantity);
-      Components.toast(`Added ${quantity}x ${product.name} to cart!`);
-      Components.updateCartBadge();
+      try {
+        await API.cart.add(user?.id || null, product.id, selectedVariant.id, quantity);
+        Components.toast(`Added ${quantity}x ${product.name} to cart!`);
+        await Components.updateCartBadge();
+        Components.openMiniCart(`Added ${quantity}x ${product.name}`);
+      } catch (err) {
+        console.error(err);
+        Components.toast('Could not add that item. Please try again.', 'error');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Add to Cart';
     });
   }
 

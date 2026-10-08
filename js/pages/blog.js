@@ -1,5 +1,6 @@
 App.ready().then(async () => {
   await Components.initLayout('blog');
+  DOM.$('#blog-grid').innerHTML = '<div class="skeleton skeleton--row"></div>'.repeat(3);
 
   const posts = await API.cms.getRecipes();
   const productsResult = await API.catalog.getProducts();
@@ -119,6 +120,7 @@ App.ready().then(async () => {
     }
     Components.updateCartBadge();
     if (added) {
+      if (list.length > 1) Components.openMiniCart(`Ingredients for ${label}`);
       Components.toast(`Added ${added} item${added === 1 ? '' : 's'} for ${label} to your cart!` + (skipped ? ` (${skipped} out of stock)` : ''));
     } else {
       Components.toast('Those items are out of stock right now.', 'error');

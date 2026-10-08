@@ -1,6 +1,9 @@
 App.ready().then(async () => {
   await Components.initLayout('home');
 
+  const trendingSkeleton = DOM.$('#trending-products');
+  if (trendingSkeleton) trendingSkeleton.innerHTML = Components.skeletonCards(4);
+
   const hero = await API.cms.getHero();
   const heroTitleEl = DOM.$('#hero-title');
   const heroSubtitleEl = DOM.$('#hero-subtitle');
@@ -39,6 +42,8 @@ App.ready().then(async () => {
   const trendingEl = DOM.$('#trending-products');
   if (trendingEl) {
     const { data: products } = await API.catalog.getProducts({ sort: 'name' });
-    trendingEl.innerHTML = await Components.productCardsHtml(products.slice(0, 4), { showAdd: true });
+    const best = products.filter(p => (p.tags || []).includes('best-seller'));
+    const picks = [...best, ...products.filter(p => !best.includes(p))].slice(0, 4);
+    trendingEl.innerHTML = await Components.productCardsHtml(picks, { showAdd: true });
   }
 });

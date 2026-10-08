@@ -4,8 +4,8 @@ const Components = {
     const user = API.user.getCurrent();
     const admin = API.admin.getCurrent();
     const userId = user?.id || null;
-    const cart = await API.cart.getEnriched(userId);
-    this._cartCount = cart.itemCount || 0;
+    const rawCart = await API.cart.get(userId);
+    this._cartCount = rawCart.items.reduce((sum, i) => sum + i.quantity, 0);
     const cutoff = API.delivery.isBeforeCutoff();
     const deliveryDate = API.delivery.getNextDeliveryDate();
 
@@ -47,7 +47,7 @@ const Components = {
               🔔<span class="cart-badge" id="notif-count"></span>
             </a>` : ''}
             <a href="${this._root()}pages/cart.html" class="header__cart" aria-label="Cart">
-              🛒<span class="cart-badge" id="cart-count">${cart.itemCount || ''}</span>
+              🛒<span class="cart-badge" id="cart-count">${this._cartCount || ''}</span>
             </a>
             <button class="header__menu-btn" id="menu-toggle" aria-label="Toggle menu">☰</button>
           </div>
@@ -109,9 +109,13 @@ const Components = {
     const lowStock = totalStock > 0 && totalStock <= 10;
     const rating = options.rating || 0;
     const wishlisted = options.wishlisted || false;
-    const priceDisplay = minPrice === maxPrice
-      ? Format.currency(minPrice)
-      : `${Format.currency(minPrice)} – ${Format.currency(maxPrice)}`;
+    const firstVariant = product.variants.find(v => v.stock > 0) || product.variants[0];
+    const unitText = u => Format.unitLabel(u).replace('per ', '/ ');
+    const priceDisplay = `<span class="card-price">${Format.currency(firstVariant.price)}</span> <small class="card-unit">${unitText(firstVariant.unit)}</small>`;
+    const variantPicker = inStock && options.showAdd && product.variants.length > 1
+      ? `<select class="card-variant" aria-label="Choose size for ${DOM.escapeHtml(product.name)}">
+          ${product.variants.map(v => `<option value="${v.id}" data-price="${v.price}" data-unit="${DOM.escapeHtml(unitText(v.unit))}" ${v.id === firstVariant.id ? 'selected' : ''} ${v.stock <= 0 ? 'disabled' : ''}>${DOM.escapeHtml(v.unit)} – ${Format.currency(v.price)}${v.stock <= 0 ? ' (sold out)' : ''}</option>`).join('')}
+        </select>` : '';
     const user = API.user.getCurrent();
 
     return `
@@ -130,6 +134,7 @@ const Components = {
           </h3>
           ${rating > 0 ? `<div class="product-card__rating">${'★'.repeat(Math.round(rating))}${'☆'.repeat(5 - Math.round(rating))} <small>(${rating.toFixed(1)})</small></div>` : ''}
           <p class="product-card__price">${priceDisplay}</p>
+          ${variantPicker}
           <div class="product-card__actions">
             ${inStock && options.showAdd
               ? `<div class="qty-stepper qty-stepper--sm">
@@ -137,7 +142,7 @@ const Components = {
                    <span class="card-qty-value">1</span>
                    <button type="button" class="card-qty-plus">+</button>
                  </div>
-                 <button class="btn btn--primary btn--sm add-to-cart-btn" data-id="${product.id}" data-variant="${product.variants[0].id}">Add to Cart</button>`
+                 <button class="btn btn--primary btn--sm add-to-cart-btn" data-id="${product.id}" data-variant="${firstVariant.id}">Add to Cart</button>`
               : ''}
             ${user ? `<button class="btn btn--ghost btn--sm wishlist-btn ${wishlisted ? 'active' : ''}" data-id="${product.id}" title="Wishlist">${wishlisted ? '❤️' : '🤍'}</button>` : ''}
           </div>
@@ -173,7 +178,79 @@ const Components = {
     }, 3000);
   },
 
+  skeletonCards(n = 4) {
+    return Array.from({ length: n }, () => `
+      <div class="product-card product-card--skeleton" aria-hidden="true">
+        <div class="skeleton skeleton--image"></div>
+        <div class="product-card__body">
+          <div class="skeleton skeleton--line"></div>
+          <div class="skeleton skeleton--line skeleton--short"></div>
+          <div class="skeleton skeleton--button"></div>
+        </div>
+      </div>`).join('');
+  },
+
+  // Slide-in cart preview shown after "Add to Cart", so shoppers can keep browsing.
+  async openMiniCart(message) {
+    const user = API.user.getCurrent();
+    const cart = await API.cart.getEnriched(user?.id || null);
+    let el = DOM.$('#mini-cart');
+    if (!el) {
+      el = DOM.create('div', { id: 'mini-cart', className: 'mini-cart' });
+      document.body.appendChild(el);
+    }
+    const remaining = Math.max(0, CONFIG.freeDeliveryThreshold - cart.subtotal);
+    const progress = Math.min(100, (cart.subtotal / CONFIG.freeDeliveryThreshold) * 100);
+    const shown = cart.items.slice(-5).reverse();
+    el.innerHTML = `
+      <div class="mini-cart__backdrop" data-close="1"></div>
+      <aside class="mini-cart__panel" role="dialog" aria-modal="true" aria-label="Your cart">
+        <div class="mini-cart__head">
+          <strong>✓ ${DOM.escapeHtml(message || 'Added to your cart')}</strong>
+          <button type="button" class="mini-cart__close" data-close="1" aria-label="Close cart preview">×</button>
+        </div>
+        <div class="mini-cart__items">
+          ${shown.map(i => `
+            <div class="mini-cart__item">
+              <div class="mini-cart__thumb">${i.product.imageUrl ? `<img src="${DOM.escapeHtml(i.product.imageUrl)}" alt="${DOM.escapeHtml(i.product.name)}">` : i.product.image}</div>
+              <div class="mini-cart__info"><strong>${DOM.escapeHtml(i.product.name)}</strong><small>${i.quantity} × ${Format.unitLabel(i.variant.unit)}</small></div>
+              <span>${Format.currency(i.lineTotal)}</span>
+            </div>`).join('')}
+          ${cart.items.length > shown.length ? `<p class="mini-cart__more">+ ${cart.items.length - shown.length} more item(s) in your cart</p>` : ''}
+        </div>
+        <div class="mini-cart__foot">
+          ${remaining > 0
+            ? `<p class="mini-cart__ship">Add ${Format.currency(remaining)} more for <strong>free delivery</strong></p>`
+            : '<p class="mini-cart__ship mini-cart__ship--ok">🎉 You qualify for free delivery!</p>'}
+          <div class="delivery-progress__bar"><div class="delivery-progress__fill" style="width:${progress}%"></div></div>
+          <div class="summary-row"><span>Subtotal</span><strong>${Format.currency(cart.subtotal)}</strong></div>
+          <a href="${this._root()}pages/cart.html" class="btn btn--primary" style="width:100%;margin-top:0.5rem">View cart & checkout</a>
+          <button type="button" class="btn btn--outline" data-close="1" style="width:100%;margin-top:0.5rem">Keep shopping</button>
+        </div>
+      </aside>`;
+    requestAnimationFrame(() => el.classList.add('mini-cart--open'));
+    const close = () => { el.classList.remove('mini-cart--open'); setTimeout(() => el.remove(), 250); };
+    el.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+    const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+    el.querySelector('.mini-cart__close').focus();
+  },
+
+  renderStickyCart(count) {
+    const page = window.location.pathname;
+    const skip = /(cart|checkout|admin|login|register)\.html/.test(page);
+    let bar = DOM.$('#sticky-cart');
+    if (skip || !count) { bar?.remove(); return; }
+    if (!bar) {
+      bar = DOM.create('a', { id: 'sticky-cart', className: 'sticky-cart' });
+      document.body.appendChild(bar);
+    }
+    bar.href = `${this._root()}pages/cart.html`;
+    bar.textContent = `🛒 View cart · ${count} item${count === 1 ? '' : 's'}`;
+  },
+
   setCartBadge(count) {
+    this.renderStickyCart(count);
     const badge = DOM.$('#cart-count');
     if (badge) {
       badge.textContent = count || '';
@@ -189,12 +266,14 @@ const Components = {
   },
 
   // Counts order status updates the user has not looked at yet and shows it on the bell.
-  async updateNotifBadge() {
+  async updateNotifBadge(force = false) {
     const user = API.user.getCurrent();
     const badge = DOM.$('#notif-count');
     if (!user || !badge) return;
     try {
-      const { data: orders } = await API.order.getAll({ userId: user.id });
+      const key = `gocery_cache_notif_${user.id}`;
+      if (force) sessionStorage.removeItem(key);
+      const orders = await API._cached(key, 60000, async () => (await API.order.getAll({ userId: user.id })).data);
       const lastSeen = Storage.get(`gocery_notif_seen_${user.id}`, null);
       const unread = orders.reduce((total, o) => total + (o.statusHistory || []).filter(h =>
         !lastSeen || new Date(h.timestamp) > new Date(lastSeen)).length, 0);
@@ -248,11 +327,25 @@ const Components = {
         const qtyEl = card?.querySelector('.card-qty-value');
         const qty = qtyEl ? (parseInt(qtyEl.textContent, 10) || 1) : 1;
         const user = API.user.getCurrent();
-        await API.cart.add(user?.id || null, btn.dataset.id, btn.dataset.variant, qty);
-        const productName = card?.querySelector('.product-card__title')?.textContent.trim() || 'Item';
-        Components.toast(`Added ${qty}x ${productName} to your cart!`);
-        Components.updateCartBadge();
-        if (qtyEl) qtyEl.textContent = '1';
+        const variantId = card?.querySelector('.card-variant')?.value || btn.dataset.variant;
+        if (btn.disabled) return;
+        const label = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Adding…';
+        try {
+          await API.cart.add(user?.id || null, btn.dataset.id, variantId, qty);
+          const productName = card?.querySelector('.product-card__title')?.textContent.trim() || 'Item';
+          Components.toast(`Added ${qty}x ${productName} to your cart!`);
+          await Components.updateCartBadge();
+          Components.openMiniCart(`Added ${qty}x ${productName}`);
+          if (qtyEl) qtyEl.textContent = '1';
+        } catch (err) {
+          console.error('Add to cart failed:', err);
+          Components.toast('Could not add that item. Please try again.', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = label;
+        }
       }
       if (e.target.closest('.wishlist-btn')) {
         const btn = e.target.closest('.wishlist-btn');
@@ -263,6 +356,16 @@ const Components = {
         btn.textContent = btn.classList.contains('active') ? '❤️' : '🤍';
         Components.toast('Wishlist updated');
       }
+    });
+
+    document.addEventListener('change', e => {
+      const select = e.target.closest('.card-variant');
+      if (!select) return;
+      const card = select.closest('.product-card');
+      const option = select.options[select.selectedIndex];
+      card.querySelector('.card-price').textContent = Format.currency(Number(option.dataset.price));
+      card.querySelector('.card-unit').textContent = option.dataset.unit;
+      card.querySelector('.add-to-cart-btn').dataset.variant = select.value;
     });
 
     document.addEventListener('gocery:cart:updated', () => Components.updateCartBadge());

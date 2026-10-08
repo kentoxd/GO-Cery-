@@ -3,6 +3,26 @@
  * All data methods return Promises.
  */
 const API = {
+  // Small session cache so moving between pages doesn't re-read the same Firestore data every time.
+  async _cached(key, ttl, loader) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        const { t, d } = JSON.parse(raw);
+        if (Date.now() - t < ttl) return d;
+      }
+    } catch (e) { /* cache is optional */ }
+    const data = await loader();
+    try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), d: data })); } catch (e) { /* ignore */ }
+    return data;
+  },
+
+  _clearCache(prefix = 'gocery_cache_') {
+    try {
+      Object.keys(sessionStorage).filter(k => k.startsWith(prefix)).forEach(k => sessionStorage.removeItem(k));
+    } catch (e) { /* ignore */ }
+  },
+
   _emit(event, payload) {
     document.dispatchEvent(new CustomEvent(`gocery:${event}`, { detail: payload }));
   },
@@ -32,8 +52,12 @@ const API = {
 
   catalog: {
     async getProducts(filters = {}) {
-      const snap = await FirebaseApp.collections.products().get();
-      const products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const load = async () => {
+        const snap = await FirebaseApp.collections.products().get();
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      };
+      // Admins always see fresh stock; shoppers get a 60-second cache.
+      const products = API.admin.getCurrent() ? await load() : await API._cached('gocery_cache_products', 60000, load);
       return { success: true, data: API._applyProductFilters(products, filters) };
     },
 
@@ -50,6 +74,7 @@ const API = {
 
     async updateProduct(id, updates) {
       await FirebaseApp.collections.products().doc(id).update(updates);
+      API._clearCache();
       const doc = await FirebaseApp.collections.products().doc(id).get();
       const product = { id: doc.id, ...doc.data() };
       API._emit('catalog:updated', product);
@@ -60,11 +85,13 @@ const API = {
       const ref = FirebaseApp.collections.products().doc();
       product.id = ref.id;
       await ref.set(product);
+      API._clearCache();
       return { success: true, data: product };
     },
 
     async deleteProduct(id) {
       await FirebaseApp.collections.products().doc(id).delete();
+      API._clearCache();
       return { success: true };
     }
   },
@@ -296,9 +323,7 @@ const API = {
     async getEnriched(userId) {
       const cart = await this.get(userId);
       if (!cart.items.length) return { items: [], subtotal: 0, itemCount: 0 };
-      const ids = [...new Set(cart.items.map(i => i.productId))];
-      const docs = await Promise.all(ids.map(id => FirebaseApp.collections.products().doc(id).get()));
-      const products = docs.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() }));
+      const { data: products } = await API.catalog.getProducts();
       const items = cart.items.map(item => {
         const product = products.find(p => p.id === item.productId);
         const variant = product?.variants.find(v => v.id === item.variantId);
@@ -357,6 +382,7 @@ const API = {
         };
 
         await ref.set(order);
+        API._clearCache();
         API._emit('order:created', order);
         return { success: true, data: order };
       } catch (err) {
@@ -533,6 +559,7 @@ const API = {
         );
         await ref.update({ variants });
       }
+      API._clearCache();
     },
 
     async updateStock(productId, variantId, stock) {
@@ -544,6 +571,7 @@ const API = {
         v.id === variantId ? { ...v, stock } : v
       );
       await ref.update({ variants });
+      API._clearCache();
       return { success: true };
     }
   },
@@ -647,8 +675,7 @@ const API = {
 
     // One request for every product's average rating (cached for 60s) instead of one request per card.
     async getAverageRatings() {
-      const now = Date.now();
-      if (this._ratingCache && now - this._ratingCache.time < 60000) return this._ratingCache.data;
+      return API._cached('gocery_cache_ratings', 60000, async () => {
       const snap = await FirebaseApp.collections.reviews().get();
       const totals = {};
       snap.docs.forEach(d => {
@@ -660,8 +687,8 @@ const API = {
       });
       const data = {};
       Object.keys(totals).forEach(id => { data[id] = totals[id].sum / totals[id].count; });
-      this._ratingCache = { time: now, data };
       return data;
+      });
     },
 
     async getAverageRating(productId) {
@@ -719,7 +746,7 @@ const API = {
         date: new Date().toISOString().split('T')[0]
       };
       await ref.set(data);
-      this._ratingCache = null;
+      API._clearCache();
       return { success: true, data };
     },
 

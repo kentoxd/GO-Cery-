@@ -26,12 +26,28 @@ App.ready().then(async () => {
     }
 
     const statusIdx = CONFIG.orderStatuses.indexOf(order.status);
+    const statusMessages = {
+      'Pending': 'We received your order and will confirm it shortly.',
+      'Confirmed': 'Your order is confirmed. We are getting it ready.',
+      'Preparing': 'Your order is being prepared at the market.',
+      'Out for Delivery': 'Your order is on its way to you.',
+      'Delivered': 'Your order was delivered. Enjoy! You can now review your products.',
+      'Cancelled': 'This order was cancelled.',
+      'Refunded': 'This order was refunded.'
+    };
+    const stepDate = status => {
+      const entry = (order.statusHistory || []).find(h => h.status === status);
+      return entry ? Format.dateTime(entry.timestamp) : '';
+    };
     const isManualQr = CONFIG.manualPaymentMethods.includes(order.paymentMethod);
     const qrCodes = isManualQr ? await API.cms.getPaymentQrCodes() : null;
     const qrUrl = qrCodes ? (order.paymentMethod === 'GCash' ? qrCodes.gcashQrUrl : qrCodes.mayaQrUrl) : '';
 
+    const needsReceipt = isManualQr && order.paymentStatus !== 'paid' && !['Cancelled', 'Refunded'].includes(order.status);
+
     function receiptPanelInnerHtml() {
       return `
+        ${(!order.receiptUrl && needsReceipt) ? '<p class="receipt-panel__alert" role="alert">⚠ Action needed: upload your payment receipt so we can confirm your order.</p>' : ''}
         <h3 style="margin:1rem 0 0.5rem">Payment — ${DOM.escapeHtml(order.paymentMethod)}</h3>
         ${order.paymentStatus === 'paid' ? `
           <p class="receipt-panel__status receipt-panel__status--paid">✅ Payment confirmed by the seller.</p>
@@ -93,15 +109,18 @@ App.ready().then(async () => {
           <div><h2>${order.id}</h2><small>Placed ${Format.dateTime(order.createdAt)}</small></div>
           <span class="order-status order-status--${order.status.replace(/ /g, '\\ ')}">${order.status}</span>
         </div>
+        <p class="order-status-msg">${statusMessages[order.status] || ''}</p>
+        ${needsReceipt ? `<div class="receipt-panel receipt-panel--top" id="receipt-panel">${receiptPanelInnerHtml()}</div>` : ''}
         <div class="order-track">
           ${CONFIG.orderStatuses.slice(0, 5).map((s, i) => `
             <div class="track-step ${i < statusIdx ? 'done' : ''} ${i === statusIdx ? 'active' : ''}">
               <div class="track-step__dot">${i < statusIdx ? '✓' : i + 1}</div>
               <div class="track-step__label">${s}</div>
+              <div class="track-step__date">${stepDate(s)}</div>
             </div>
           `).join('')}
         </div>
-        ${isManualQr ? `<div class="receipt-panel" id="receipt-panel">${receiptPanelInnerHtml()}</div>` : ''}
+        ${isManualQr && !needsReceipt ? `<div class="receipt-panel" id="receipt-panel">${receiptPanelInnerHtml()}</div>` : ''}
         <h3 style="margin:1rem 0 0.5rem">Items</h3>
         ${order.items.map(i => `<div class="summary-row"><span>${i.quantity}x ${DOM.escapeHtml(i.name)} (${i.unit})</span><span>${Format.currency(i.lineTotal)}</span></div>`).join('')}
         <hr style="margin:1rem 0;border:none;border-top:1px solid var(--color-border)">
