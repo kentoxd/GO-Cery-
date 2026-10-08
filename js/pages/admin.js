@@ -118,13 +118,37 @@ App.ready().then(async () => {
           ${compact ? '' : `<td><select class="status-select" data-id="${o.id}">
             ${CONFIG.orderStatuses.map(s => `<option value="${s}" ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
           </select></td>
-          <td><button class="btn btn--outline btn--sm view-order" data-id="${o.id}">View</button></td>`}
+          <td style="white-space:nowrap">
+            <button class="btn btn--outline btn--sm view-order" data-id="${o.id}">View</button>
+            <button class="btn btn--outline btn--sm delete-order" data-id="${o.id}" style="color:var(--color-error);border-color:var(--color-error)">Delete</button>
+          </td>`}
         </tr>
       `).join('')}</tbody>
     </table>`;
   }
 
   function bindOrderActions() {
+    DOM.$$('.delete-order').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        if (!confirm(`Delete order ${id}? This cannot be undone.\n\nNote: stock and loyalty points are NOT restored.`)) return;
+        btn.disabled = true;
+        try {
+          await API.order.remove(id);
+          await API.admin.logAction('DELETE_ORDER', { orderId: id });
+          const row = btn.closest('tr');
+          if (row) row.remove();
+          const detail = DOM.$('#order-detail');
+          if (detail) detail.innerHTML = '';
+          Components.toast('Order deleted');
+        } catch (err) {
+          console.error('Delete order failed:', err);
+          btn.disabled = false;
+          Components.toast('Could not delete the order.', 'error');
+        }
+      });
+    });
+
     DOM.$$('.status-select').forEach(sel => {
       sel.addEventListener('change', async () => {
         await API.order.updateStatus(sel.dataset.id, sel.value);
@@ -604,7 +628,7 @@ if (view === 'products') {
   if (view === 'recipes') {
     const cmsDoc = await FirebaseApp.collections.cms().doc('main').get();
     const cms = cmsDoc.exists ? cmsDoc.data() : {};
-    const recipes = cms.recipes || cms.blogPosts || [];
+    const recipes = (cms.recipes && cms.recipes.length) ? cms.recipes : JSON.parse(JSON.stringify(SeedData.recipes));
 
     function renderRecipes() {
       DOM.$('#recipes-table-wrap').innerHTML = `
@@ -643,7 +667,16 @@ if (view === 'products') {
         <div class="form-group"><label>Date</label><input id="re-date" type="date" value="${DOM.escapeHtml(recipe.date || '')}"></div>
         <div class="form-group"><label>Image or Emoji</label><input id="re-image" value="${DOM.escapeHtml(recipe.image || '🍲')}" placeholder="Emoji or image URL"></div>
         <div class="form-group"><label>Short Description</label><textarea id="re-excerpt" rows="2">${DOM.escapeHtml(recipe.excerpt || '')}</textarea></div>
-        <div class="form-group"><label>Recipe Content</label><textarea id="re-content" rows="6">${DOM.escapeHtml(recipe.content || '')}</textarea></div>
+        <div class="form-group"><label>Recipe Content (intro)</label><textarea id="re-content" rows="4">${DOM.escapeHtml(recipe.content || '')}</textarea></div>
+        <div class="form-group"><label>Prep Time</label><input id="re-prep" value="${DOM.escapeHtml(recipe.prepTime || '')}" placeholder="e.g. 15 min"></div>
+        <div class="form-group"><label>Cook Time</label><input id="re-cook" value="${DOM.escapeHtml(recipe.cookTime || '')}" placeholder="e.g. 30 min"></div>
+        <div class="form-group"><label>Servings</label><input id="re-servings" type="number" min="1" value="${DOM.escapeHtml(String(recipe.servings || ''))}"></div>
+        <div class="form-group"><label>Difficulty</label><input id="re-difficulty" value="${DOM.escapeHtml(recipe.difficulty || '')}" placeholder="Easy, Medium, Hard"></div>
+        <div class="form-group"><label>Ingredients (one per line: Name | Amount | productId | variantId | qty)</label>
+          <textarea id="re-ingredients" rows="6" placeholder="Large Shrimp (Sugpo) | 500 g | p015 | v015a | 1&#10;Sinigang mix | 1 pack">${DOM.escapeHtml((recipe.ingredients || []).map(i => (i.productId ? [i.name, i.amount || '', i.productId, i.variantId || '', i.qty || 1] : [i.name, i.amount || '']).join(' | ')).join('\n'))}</textarea>
+          <small>Leave out productId to show it as a pantry item. Only ingredients with a productId get an order button.</small></div>
+        <div class="form-group"><label>Steps (one per line)</label><textarea id="re-steps" rows="6">${DOM.escapeHtml((recipe.steps || []).join('\n'))}</textarea></div>
+        <div class="form-group"><label>Tips (one per line)</label><textarea id="re-tips" rows="3">${DOM.escapeHtml((recipe.tips || []).join('\n'))}</textarea></div>
         <p class="form-error" id="re-error"></p>
         <div class="modal-actions" style="display:flex;gap:0.5rem">
           <button class="btn btn--primary" id="re-save">Save Recipe</button>
@@ -654,7 +687,26 @@ if (view === 'products') {
       DOM.$('#re-save').addEventListener('click', async () => {
         const title = DOM.$('#re-title').value.trim();
         if (!title) { DOM.$('#re-error').textContent = 'Title is required.'; return; }
+        const lines = id => DOM.$(id).value.split('\n').map(l => l.trim()).filter(Boolean);
+        const ingredients = lines('#re-ingredients').map(line => {
+          const [name, amount, productId, variantId, qty] = line.split('|').map(x => x.trim());
+          const ing = { name, amount: amount || '' };
+          if (productId) {
+            ing.productId = productId;
+            if (variantId) ing.variantId = variantId;
+            ing.qty = parseInt(qty, 10) || 1;
+          }
+          return ing;
+        });
         const updated = {
+          ...(isNew ? {} : recipe),
+          prepTime: DOM.$('#re-prep').value.trim(),
+          cookTime: DOM.$('#re-cook').value.trim(),
+          servings: parseInt(DOM.$('#re-servings').value, 10) || '',
+          difficulty: DOM.$('#re-difficulty').value.trim(),
+          ingredients,
+          steps: lines('#re-steps'),
+          tips: lines('#re-tips'),
           id: isNew ? `recipe-${Date.now()}` : recipe.id,
           title,
           category: DOM.$('#re-category').value.trim() || 'Recipes',

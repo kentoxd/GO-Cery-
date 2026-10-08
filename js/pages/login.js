@@ -5,6 +5,10 @@ App.ready().then(async () => {
   const params = DOM.getQueryParams();
   const redirect = params.redirect || '../index.html';
 
+  if (params.notice === 'checkout') {
+    DOM.$('#login-error').textContent = 'Please log in or create an account to place your order.';
+  }
+
   DOM.$('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const fd = new FormData(e.target);

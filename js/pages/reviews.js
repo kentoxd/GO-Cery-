@@ -35,6 +35,7 @@ App.ready().then(async () => {
         <span class="review-card__rating" aria-label="${review.rating} out of 5 stars">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span>
       </div>
       <p>${DOM.escapeHtml(review.comment || '')}</p>
+      ${(review.images || []).length ? `<div class="review-images">${review.images.map(u => `<a href="${DOM.escapeHtml(u)}" target="_blank" rel="noopener"><img src="${DOM.escapeHtml(u)}" alt="Review photo" loading="lazy"></a>`).join('')}</div>` : ''}
       <small class="reviews-page__date">${Format.date(review.date)}${review.verified ? ' · Verified Purchase' : ''}</small>
     </article>`;
   }).join('');

@@ -4,6 +4,13 @@ App.ready().then(async () => {
   const user = API.user.getCurrent();
   const params = DOM.getQueryParams();
 
+  function paymentLabel(o) {
+    if (o.status === 'Cancelled') return 'Cancelled';
+    if (o.paymentStatus === 'paid') return 'Paid';
+    if (o.paymentStatus === 'awaiting_manual_verification') return o.receiptUrl ? 'Receipt received, awaiting verification' : 'Upload your receipt to continue';
+    return 'Pay on delivery';
+  }
+
   if (params.success) Components.toast('Order placed successfully! 🎉');
 
   if (params.id) {
@@ -105,10 +112,27 @@ App.ready().then(async () => {
         <hr style="margin:1rem 0;border:none;border-top:1px solid var(--color-border)">
         <p><strong>Delivery:</strong> ${Format.date(order.deliveryDate)} · ${order.deliverySlot}</p>
         <p><strong>Address:</strong> ${order.address ? DOM.escapeHtml(order.address.street) + ', ' + DOM.escapeHtml(order.address.city) : 'N/A'}</p>
-        <p><strong>Payment:</strong> ${order.paymentMethod}</p>
+        <p><strong>Payment:</strong> ${order.paymentMethod} · ${paymentLabel(order)}</p>
+        ${order.status === 'Pending' ? `
+          <button class="btn btn--outline btn--sm" id="cancel-order-btn" style="margin-top:1rem;color:var(--color-error);border-color:var(--color-error)">Cancel Order</button>
+          <p class="form-error" id="cancel-error"></p>` : ''}
       </div>`;
 
     bindReceiptPanel();
+
+    DOM.$('#cancel-order-btn')?.addEventListener('click', async () => {
+      if (!confirm('Cancel this order? This cannot be undone.')) return;
+      const btn = DOM.$('#cancel-order-btn');
+      btn.disabled = true;
+      const result = await API.order.cancel(order.id);
+      if (result.success) {
+        Components.toast('Order cancelled.');
+        window.location.href = 'orders.html?id=' + order.id;
+      } else {
+        DOM.$('#cancel-error').textContent = result.error || 'Could not cancel the order.';
+        btn.disabled = false;
+      }
+    });
 
     return;
   }
@@ -124,7 +148,7 @@ App.ready().then(async () => {
             <span class="order-status order-status--${o.status.replace(/ /g, '\\ ')}">${o.status}</span>
           </div>
           <p>${o.items.map(i => i.name).join(', ')}</p>
-          <p><strong>${Format.currency(o.total)}</strong></p>
+          <p><strong>${Format.currency(o.total)}</strong> · <small>${paymentLabel(o)}</small></p>
           <a href="orders.html?id=${o.id}" class="btn btn--outline btn--sm" style="margin-top:0.5rem">Track Order</a>
         </div>
       `).join('')

@@ -38,20 +38,6 @@ const FirebaseApp = {
     const meta = await metaRef.get();
     if (meta.exists && meta.data().seeded) return;
 
-    let adminUid = null;
-    try {
-      const cred = await this.auth.createUserWithEmailAndPassword('admin@gocery.ph', 'admin123');
-      adminUid = cred.user.uid;
-    } catch (e) {
-      if (e.code === 'auth/email-already-in-use') {
-        const cred = await this.auth.signInWithEmailAndPassword('admin@gocery.ph', 'admin123');
-        adminUid = cred.user.uid;
-        await this.auth.signOut();
-      } else {
-        console.warn('Admin seed:', e.message);
-      }
-    }
-
     const batch = this.db.batch();
 
     SeedData.products.forEach(p => {
@@ -63,14 +49,6 @@ const FirebaseApp = {
     });
 
     batch.set(this.db.collection('cms').doc('main'), SeedData.cms);
-
-    if (adminUid) {
-      batch.set(this.db.collection('admins').doc(adminUid), {
-        email: 'admin@gocery.ph',
-        name: 'Super Admin',
-        role: 'super_admin'
-      });
-    }
 
     batch.set(metaRef, {
       seeded: true,

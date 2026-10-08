@@ -12,6 +12,7 @@ App.ready().then(async () => {
       <a href="?tab=profile" class="${tab === 'profile' ? 'active' : ''}">👤 Profile</a>
       <a href="?tab=orders" class="${tab === 'orders' ? 'active' : ''}">📦 Orders</a>
       <a href="?tab=notifications" class="${tab === 'notifications' ? 'active' : ''}">🔔 Notifications</a>
+      <a href="?tab=wishlist" class="${tab === 'wishlist' ? 'active' : ''}">❤️ Wishlist</a>
       <a href="?tab=loyalty" class="${tab === 'loyalty' ? 'active' : ''}">⭐ Suki Rewards</a>
       <a href="?tab=addresses" class="${tab === 'addresses' ? 'active' : ''}">📍 Addresses</a>
       <a href="#" id="logout-link">🚪 Logout</a>`;
@@ -65,7 +66,7 @@ App.ready().then(async () => {
           for (const i of order.items) {
             await API.cart.add(user.id, i.productId, i.variantId, i.quantity);
           }
-          Components.toast('Items added to cart!');
+          Components.toast(`Added ${order.items.length} item${order.items.length === 1 ? '' : 's'} from order ${order.id} to your cart!`);
           Components.updateCartBadge();
         });
       });
@@ -86,6 +87,7 @@ App.ready().then(async () => {
 
       const lastSeen = Storage.get(`gocery_notif_seen_${user.id}`, null);
       Storage.set(`gocery_notif_seen_${user.id}`, new Date().toISOString());
+      Components.updateNotifBadge();
 
       el.innerHTML = `<h2>Notifications</h2>` +
         (notifications.length ? notifications.map(n => {
@@ -104,6 +106,15 @@ App.ready().then(async () => {
               <a href="orders.html?id=${n.orderId}" class="btn btn--outline btn--sm" style="margin-top:0.5rem">View Order</a>
             </div>`;
         }).join('') : '<div class="empty-state"><p>No notifications yet. You\'ll see updates here when your order status changes.</p></div>');
+    }
+
+    if (tab === 'wishlist') {
+      const ids = await API.wishlist.get(user.id);
+      const { data: all } = await API.catalog.getProducts();
+      const saved = all.filter(p => ids.includes(p.id));
+      el.innerHTML = `<h2>My Wishlist</h2>` + (saved.length
+        ? `<div class="grid grid--3" style="margin-top:1rem">${await Components.productCardsHtml(saved, { showAdd: true })}</div>`
+        : '<div class="empty-state"><div class="empty-state__icon">🤍</div><p>Nothing saved yet. Tap the heart on a product to save it here.</p><a href="shop.html" class="btn btn--primary">Browse Products</a></div>');
     }
 
     if (tab === 'loyalty') {

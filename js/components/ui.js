@@ -5,6 +5,7 @@ const Components = {
     const admin = API.admin.getCurrent();
     const userId = user?.id || null;
     const cart = await API.cart.getEnriched(userId);
+    this._cartCount = cart.itemCount || 0;
     const cutoff = API.delivery.isBeforeCutoff();
     const deliveryDate = API.delivery.getNextDeliveryDate();
 
@@ -42,6 +43,9 @@ const Components = {
               : admin
                 ? `<a href="${this._root()}pages/admin.html" class="header__account" title="${DOM.escapeHtml(admin.email)}">🛠️ ${DOM.escapeHtml(admin.name || admin.email.split('@')[0])}</a>`
                 : `<a href="${this._root()}pages/login.html" class="header__account">Login</a>`}
+            ${user ? `<a href="${this._root()}pages/account.html?tab=notifications" class="header__cart header__bell" id="notif-link" aria-label="Notifications" title="Notifications">
+              🔔<span class="cart-badge" id="notif-count"></span>
+            </a>` : ''}
             <a href="${this._root()}pages/cart.html" class="header__cart" aria-label="Cart">
               🛒<span class="cart-badge" id="cart-count">${cart.itemCount || ''}</span>
             </a>
@@ -101,6 +105,8 @@ const Components = {
     const minPrice = Math.min(...product.variants.map(v => v.price));
     const maxPrice = Math.max(...product.variants.map(v => v.price));
     const inStock = product.variants.some(v => v.stock > 0);
+    const totalStock = product.variants.reduce((sum, v) => sum + Math.max(0, v.stock || 0), 0);
+    const lowStock = totalStock > 0 && totalStock <= 10;
     const rating = options.rating || 0;
     const wishlisted = options.wishlisted || false;
     const priceDisplay = minPrice === maxPrice
@@ -112,10 +118,11 @@ const Components = {
       <article class="product-card ${!inStock ? 'product-card--sold-out' : ''}" data-id="${product.id}">
         <a href="${this._root()}pages/product.html?id=${product.id}" class="product-card__image">
           ${product.imageUrl
-          ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="" class="product-card__photo" style="width:100%;height:100%;object-fit:cover" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="product-emoji" hidden>${product.image}</span>`
+          ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" loading="lazy" class="product-card__photo" style="width:100%;height:100%;object-fit:cover" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="product-emoji" hidden>${product.image}</span>`
           : `<span class="product-emoji">${product.image}</span>`}
           ${product.featured ? '<span class="product-card__badge">Suki Pick</span>' : ''}
           ${!inStock ? '<span class="product-card__badge product-card__badge--sold">Sold Out</span>' : ''}
+          ${inStock && lowStock ? `<span class="product-card__badge product-card__badge--low">Only ${totalStock} left</span>` : ''}
         </a>
         <div class="product-card__body">
           <h3 class="product-card__title">
@@ -141,21 +148,20 @@ const Components = {
   async productCardsHtml(products, options = {}) {
     const user = API.user.getCurrent();
     const wishlist = user ? await API.wishlist.get(user.id) : [];
-    const cards = await Promise.all(products.map(async p => {
-      const rating = await API.reviews.getAverageRating(p.id);
-      return this.productCard(p, {
-        ...options,
-        rating,
-        wishlisted: wishlist.includes(p.id)
-      });
-    }));
-    return cards.join('');
+    const ratings = await API.reviews.getAverageRatings();
+    return products.map(p => this.productCard(p, {
+      ...options,
+      rating: ratings[p.id] || 0,
+      wishlisted: wishlist.includes(p.id)
+    })).join('');
   },
 
   toast(message, type = 'success') {
     let container = DOM.$('#toast-container');
     if (!container) {
       container = DOM.create('div', { id: 'toast-container', className: 'toast-container' });
+      container.setAttribute('role', 'status');
+      container.setAttribute('aria-live', 'polite');
       document.body.appendChild(container);
     }
     const toast = DOM.create('div', { className: `toast toast--${type}`, textContent: message });
@@ -167,17 +173,62 @@ const Components = {
     }, 3000);
   },
 
-  async updateCartBadge() {
-    const user = API.user.getCurrent();
-    const cart = await API.cart.getEnriched(user?.id || null);
+  setCartBadge(count) {
     const badge = DOM.$('#cart-count');
     if (badge) {
-      badge.textContent = cart.itemCount || '';
-      badge.style.display = cart.itemCount ? 'flex' : 'none';
+      badge.textContent = count || '';
+      badge.style.display = count ? 'flex' : 'none';
     }
   },
 
+  async updateCartBadge() {
+    const user = API.user.getCurrent();
+    const cart = await API.cart.get(user?.id || null);
+    this._cartCount = cart.items.reduce((sum, i) => sum + i.quantity, 0);
+    this.setCartBadge(this._cartCount);
+  },
+
+  // Counts order status updates the user has not looked at yet and shows it on the bell.
+  async updateNotifBadge() {
+    const user = API.user.getCurrent();
+    const badge = DOM.$('#notif-count');
+    if (!user || !badge) return;
+    try {
+      const { data: orders } = await API.order.getAll({ userId: user.id });
+      const lastSeen = Storage.get(`gocery_notif_seen_${user.id}`, null);
+      const unread = orders.reduce((total, o) => total + (o.statusHistory || []).filter(h =>
+        !lastSeen || new Date(h.timestamp) > new Date(lastSeen)).length, 0);
+      badge.textContent = unread > 9 ? '9+' : (unread || '');
+      badge.style.display = unread ? 'flex' : 'none';
+    } catch (e) {
+      badge.style.display = 'none';
+    }
+  },
+
+  // Header/footer are re-rendered on every initLayout, so their listeners are re-bound each time.
+  bindLayoutEvents() {
+    const menuToggle = DOM.$('#menu-toggle');
+    const nav = DOM.$('#main-nav');
+    if (menuToggle && nav) {
+      menuToggle.addEventListener('click', () => nav.classList.toggle('nav--open'));
+    }
+
+    const newsletter = DOM.$('#newsletter-form');
+    if (newsletter) {
+      newsletter.addEventListener('submit', e => {
+        e.preventDefault();
+        Components.toast('Thanks for subscribing, Suki!');
+        newsletter.reset();
+      });
+    }
+
+  },
+
+  // Document-level listeners must only be added once, or one click would run the handler several times.
   bindGlobalEvents() {
+    this.bindLayoutEvents();
+    if (this._globalBound) return;
+    this._globalBound = true;
     document.addEventListener('click', async e => {
       const qtyMinus = e.target.closest('.card-qty-minus');
       const qtyPlus = e.target.closest('.card-qty-plus');
@@ -198,7 +249,8 @@ const Components = {
         const qty = qtyEl ? (parseInt(qtyEl.textContent, 10) || 1) : 1;
         const user = API.user.getCurrent();
         await API.cart.add(user?.id || null, btn.dataset.id, btn.dataset.variant, qty);
-        Components.toast(`Added ${qty > 1 ? qty + 'x ' : ''}to cart!`);
+        const productName = card?.querySelector('.product-card__title')?.textContent.trim() || 'Item';
+        Components.toast(`Added ${qty}x ${productName} to your cart!`);
         Components.updateCartBadge();
         if (qtyEl) qtyEl.textContent = '1';
       }
@@ -213,26 +265,13 @@ const Components = {
       }
     });
 
-    const menuToggle = DOM.$('#menu-toggle');
-    const nav = DOM.$('#main-nav');
-    if (menuToggle && nav) {
-      menuToggle.addEventListener('click', () => nav.classList.toggle('nav--open'));
-    }
-
-    const newsletter = DOM.$('#newsletter-form');
-    if (newsletter) {
-      newsletter.addEventListener('submit', e => {
-        e.preventDefault();
-        Components.toast('Thanks for subscribing, Suki!');
-        newsletter.reset();
-      });
-    }
-
     document.addEventListener('gocery:cart:updated', () => Components.updateCartBadge());
     document.addEventListener('gocery:auth:changed', () => this.initLayout(this._activePage));
   },
 
   _activePage: '',
+  _globalBound: false,
+  _cartCount: 0,
 
   _root() {
     const path = window.location.pathname;
@@ -252,6 +291,7 @@ const Components = {
     if (headerEl) headerEl.innerHTML = await this.renderHeader(activePage);
     if (footerEl) footerEl.innerHTML = this.renderFooter();
     this.bindGlobalEvents();
-    await this.updateCartBadge();
+    this.setCartBadge(this._cartCount || 0);
+    this.updateNotifBadge();
   }
 };

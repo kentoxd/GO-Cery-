@@ -3,3 +3,5 @@ node_modules/
 server/service-account*.json
 server/*.json
 .firebase/
+firebase-debug.log
+*.log

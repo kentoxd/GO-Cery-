@@ -7,10 +7,30 @@ App.ready().then(async () => {
     return;
   }
 
-  const cart = await API.cart.getEnriched(user.id);
+  const fullCart = await API.cart.getEnriched(user.id);
+
+  // Only pay for the items picked on the cart page (all items if nothing was picked).
+  let pickedKeys = null;
+  try { pickedKeys = JSON.parse(sessionStorage.getItem('gocery_checkout_selection') || 'null'); } catch (e) { pickedKeys = null; }
+  const cartItems = pickedKeys
+    ? fullCart.items.filter(i => pickedKeys.includes(`${i.productId}|${i.variantId}`))
+    : fullCart.items;
+  const cart = {
+    items: cartItems,
+    subtotal: cartItems.reduce((sum, i) => sum + i.lineTotal, 0),
+    itemCount: cartItems.reduce((sum, i) => sum + i.quantity, 0)
+  };
   if (!cart.items.length) {
     window.location.href = 'cart.html';
     return;
+  }
+
+  // After an order, remove only the items that were paid for and keep the rest in the cart.
+  async function removePaidItems() {
+    for (const i of cart.items) {
+      await API.cart.remove(user.id, i.productId, i.variantId);
+    }
+    sessionStorage.removeItem('gocery_checkout_selection');
   }
 
   let step = 1;
@@ -334,12 +354,12 @@ App.ready().then(async () => {
               btn.textContent = 'Place Order';
               return;
             }
-            await API.cart.clear(user.id);
+            await removePaidItems();
             showManualQrPanel(qrUrl, order.data.id, payment?.name);
             return;
           }
 
-          await API.cart.clear(user.id);
+          await removePaidItems();
           window.location.href = `orders.html?id=${order.data.id}&success=1`;
         } catch (err) {
           console.error('Checkout failed:', err);

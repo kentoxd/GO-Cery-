@@ -98,6 +98,7 @@ App.ready().then(async () => {
               <span class="review-card__rating">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
             </div>
             <p>${DOM.escapeHtml(r.comment)}</p>
+            ${(r.images || []).length ? `<div class="review-images">${r.images.map(u => `<a href="${DOM.escapeHtml(u)}" target="_blank" rel="noopener"><img src="${DOM.escapeHtml(u)}" alt="Review photo" loading="lazy"></a>`).join('')}</div>` : ''}
             <small style="color:var(--color-text-muted)">${Format.date(r.date)}${r.verified ? ' · Verified Purchase' : ''}</small>
           </div>
         `).join('')
@@ -124,21 +125,35 @@ App.ready().then(async () => {
       }
     }
 
+    const imageInput = DOM.$('#review-images');
+    imageInput?.addEventListener('change', () => {
+      const files = Array.from(imageInput.files).slice(0, 3);
+      if (imageInput.files.length > 3) Components.toast('Only the first 3 photos will be used.', 'error');
+      DOM.$('#review-previews').innerHTML = files.map(f => `<img src="${URL.createObjectURL(f)}" alt="Preview">`).join('');
+    });
+
     reviewForm.addEventListener('submit', async e => {
       e.preventDefault();
       const rating = parseInt(DOM.$('#review-rating').value, 10);
       const comment = DOM.$('#review-comment').value.trim();
       if (!rating || !comment) return;
+      const submitBtn = reviewForm.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting…';
+      DOM.$('#review-error').textContent = '';
       const result = await API.reviews.add({
         productId,
         userId: user.id,
         userName: user.name,
         rating,
         comment
-      });
+      }, imageInput ? imageInput.files : []);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Review';
       if (result.success) {
         Components.toast('Review submitted');
         reviewForm.reset();
+        DOM.$('#review-previews').innerHTML = '';
         reviewForm.hidden = true;
         reviewGate.innerHTML = `<p class="review-gate">You\u2019ve already reviewed this product. Thanks for sharing your feedback!</p>`;
       } else {

@@ -295,7 +295,10 @@ const API = {
 
     async getEnriched(userId) {
       const cart = await this.get(userId);
-      const { data: products } = await API.catalog.getProducts();
+      if (!cart.items.length) return { items: [], subtotal: 0, itemCount: 0 };
+      const ids = [...new Set(cart.items.map(i => i.productId))];
+      const docs = await Promise.all(ids.map(id => FirebaseApp.collections.products().doc(id).get()));
+      const products = docs.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() }));
       const items = cart.items.map(item => {
         const product = products.find(p => p.id === item.productId);
         const variant = product?.variants.find(v => v.id === item.variantId);
@@ -381,6 +384,28 @@ const API = {
       return doc.exists
         ? { success: true, data: { id: doc.id, ...doc.data() } }
         : { success: false, error: 'Order not found' };
+    },
+
+    // Customers can cancel only while the order is still Pending (stock is not deducted until Confirmed).
+    async cancel(id) {
+      const user = API.user.getCurrent();
+      if (!user) return { success: false, error: 'You must be logged in.' };
+      const ref = FirebaseApp.collections.orders().doc(id);
+      const doc = await ref.get();
+      if (!doc.exists) return { success: false, error: 'Order not found.' };
+      const data = doc.data();
+      if (data.userId !== user.id) return { success: false, error: 'This isn\u2019t your order.' };
+      if (data.status !== 'Pending') return { success: false, error: 'Only pending orders can be cancelled.' };
+      const statusHistory = [...(data.statusHistory || []), { status: 'Cancelled', timestamp: new Date().toISOString(), note: 'Cancelled by customer' }];
+      await ref.update({ status: 'Cancelled', statusHistory });
+      return { success: true, data: { ...data, id, status: 'Cancelled', statusHistory } };
+    },
+
+    // Admin only (enforced by firestore.rules). Does not restore stock or loyalty points.
+    async remove(id) {
+      await FirebaseApp.collections.orders().doc(id).delete();
+      API._emit('order:deleted', { id });
+      return { success: true };
     },
 
     async updateStatus(id, status, note = '') {
@@ -620,13 +645,51 @@ const API = {
       return !snap.empty;
     },
 
+    // One request for every product's average rating (cached for 60s) instead of one request per card.
+    async getAverageRatings() {
+      const now = Date.now();
+      if (this._ratingCache && now - this._ratingCache.time < 60000) return this._ratingCache.data;
+      const snap = await FirebaseApp.collections.reviews().get();
+      const totals = {};
+      snap.docs.forEach(d => {
+        const r = d.data();
+        if (!r.productId || !r.rating) return;
+        totals[r.productId] = totals[r.productId] || { sum: 0, count: 0 };
+        totals[r.productId].sum += r.rating;
+        totals[r.productId].count++;
+      });
+      const data = {};
+      Object.keys(totals).forEach(id => { data[id] = totals[id].sum / totals[id].count; });
+      this._ratingCache = { time: now, data };
+      return data;
+    },
+
     async getAverageRating(productId) {
       const { data } = await this.getByProduct(productId);
       if (!data.length) return 0;
       return data.reduce((s, r) => s + r.rating, 0) / data.length;
     },
 
-    async add(review) {
+    async uploadImages(files, productId) {
+      const list = Array.from(files || []).slice(0, 3);
+      const urls = [];
+      const { cloudName, uploadPreset } = CONFIG.cloudinary;
+      for (const file of list) {
+        if (!file.type.startsWith('image/')) throw new Error('Please upload image files only (JPG, PNG, etc).');
+        if (file.size > 5 * 1024 * 1024) throw new Error('Each image must be under 5MB.');
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', uploadPreset);
+        formData.append('folder', `reviews/${productId}`);
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error?.message || 'Image upload failed.');
+        urls.push(json.secure_url);
+      }
+      return urls;
+    },
+
+    async add(review, imageFiles) {
       const user = API.user.getCurrent();
       if (!user) return { success: false, error: 'You must be logged in to write a review.' };
 
@@ -638,14 +701,25 @@ const API = {
         return { success: false, error: 'You\u2019ve already reviewed this product.' };
       }
 
+      let images = [];
+      if (imageFiles && imageFiles.length) {
+        try {
+          images = await this.uploadImages(imageFiles, review.productId);
+        } catch (err) {
+          return { success: false, error: err.message || 'Could not upload images.' };
+        }
+      }
+
       const ref = FirebaseApp.collections.reviews().doc();
       const data = {
         ...review,
+        images,
         id: ref.id,
         orderId: eligibleOrder.id,
         date: new Date().toISOString().split('T')[0]
       };
       await ref.set(data);
+      this._ratingCache = null;
       return { success: true, data };
     },
 
@@ -678,7 +752,7 @@ const API = {
 
     async getRecipes() {
       const cms = await this._getCms();
-      return cms.recipes || cms.blogPosts || [];
+      return (cms.recipes && cms.recipes.length) ? cms.recipes : SeedData.recipes;
     },
 
     async getFaq() {

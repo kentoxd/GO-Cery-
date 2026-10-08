@@ -518,3 +518,13 @@ h3 { font-size: 1.15rem; }
 @media (max-width: 400px) {
   .grid--4, .grid--3, .grid--2 { grid-template-columns: 1fr; }
 }
+
+/* Header notification bell */
+.header__bell { text-decoration: none; }
+
+/* Keyboard focus + low stock badge */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.product-card__badge--low { background: var(--color-accent); color: #fff; top: auto; bottom: 8px; }

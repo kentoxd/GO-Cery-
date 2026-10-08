@@ -21,7 +21,9 @@ service cloud.firestore {
 
     match /products/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() ||
+        (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['variants']));
     }
 
     match /reviews/{id} {
@@ -66,16 +68,30 @@ service cloud.firestore {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'Pending';
+        && request.resource.data.status == 'Pending'
+        && request.resource.data.inventoryDeducted == false
+        && request.resource.data.paymentStatus in ['pending_collection', 'awaiting_manual_verification']
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0;
       allow update: if isAdmin()
         || (isSignedIn()
             && resource.data.userId == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['receiptUrl', 'receiptUploadedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['receiptUrl', 'receiptUploadedAt']))
+        // customers may cancel their own order while it is still Pending
+        || (isSignedIn()
+            && resource.data.userId == request.auth.uid
+            && resource.data.status == 'Pending'
+            && request.resource.data.status == 'Cancelled'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusHistory']));
+      allow delete: if isAdmin();
     }
 
     match /loyalty/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow write: if isAdmin();
+      allow write: if isAdmin() ||
+        (isOwner(userId) && request.resource.data.keys().hasOnly(['points', 'tier', 'referrals']));
     }
 
     match /wishlists/{userId} {
