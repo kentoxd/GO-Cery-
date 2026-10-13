@@ -100,6 +100,7 @@ const FirebaseApp = {
     reviews: () => FirebaseApp.db.collection('reviews'),
     loyalty: () => FirebaseApp.db.collection('loyalty'),
     cms: () => FirebaseApp.db.collection('cms'),
+    recipes: () => FirebaseApp.db.collection('recipes'),
     admins: () => FirebaseApp.db.collection('admins'),
     auditLogs: () => FirebaseApp.db.collection('auditLogs'),
     wishlists: () => FirebaseApp.db.collection('wishlists')

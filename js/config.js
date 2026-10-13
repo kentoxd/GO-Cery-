@@ -35,7 +35,7 @@ const CONFIG = {
     orders: 'gocery_orders',
     products: 'gocery_products',
     categories: 'gocery_categories',
-    inventory: 'gocery_inventory',
+    inventory: 'gocery_inventory',  
     reviews: 'gocery_reviews',
     loyalty: 'gocery_loyalty',
     cms: 'gocery_cms',

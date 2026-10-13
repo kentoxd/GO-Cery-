@@ -17,6 +17,21 @@ const API = {
     return data;
   },
 
+  // Uploads one image to Cloudinary and returns its https URL (throws an Error with a readable message).
+  async uploadImage(file, folder) {
+    if (!file.type.startsWith('image/')) throw new Error('Please upload an image file (JPG, PNG, etc).');
+    if (file.size > 5 * 1024 * 1024) throw new Error('The image must be under 5MB.');
+    const { cloudName, uploadPreset } = CONFIG.cloudinary;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', uploadPreset);
+    formData.append('folder', folder);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || 'Image upload failed.');
+    return json.secure_url;
+  },
+
   _clearCache(prefix = 'gocery_cache_') {
     try {
       Object.keys(sessionStorage).filter(k => k.startsWith(prefix)).forEach(k => sessionStorage.removeItem(k));
@@ -424,6 +439,10 @@ const API = {
       if (data.status !== 'Pending') return { success: false, error: 'Only pending orders can be cancelled.' };
       const statusHistory = [...(data.statusHistory || []), { status: 'Cancelled', timestamp: new Date().toISOString(), note: 'Cancelled by customer' }];
       await ref.update({ status: 'Cancelled', statusHistory });
+      // Orders from the mobile app deduct stock when they are placed, so give it back here.
+      if (data.inventoryDeducted) {
+        await API.inventory.restore(data.items || []);
+      }
       return { success: true, data: { ...data, id, status: 'Cancelled', statusHistory } };
     },
 
@@ -556,6 +575,19 @@ const API = {
         const product = doc.data();
         const variants = product.variants.map(v =>
           v.id === variantId ? { ...v, stock: Math.max(0, v.stock - quantity) } : v
+        );
+        await ref.update({ variants });
+      }
+      API._clearCache();
+    },
+
+    async restore(items) {
+      for (const { productId, variantId, quantity } of items) {
+        const ref = FirebaseApp.collections.products().doc(productId);
+        const doc = await ref.get();
+        if (!doc.exists) continue;
+        const variants = doc.data().variants.map(v =>
+          v.id === variantId ? { ...v, stock: (v.stock || 0) + quantity } : v
         );
         await ref.update({ variants });
       }
@@ -777,9 +809,23 @@ const API = {
       return cms.blogPosts || [];
     },
 
+    // Recipes live in their own collection (one document each). Until the admin opens the
+    // Recipes page for the first time, the old list in cms/main (or the seed data) is used.
     async getRecipes() {
-      const cms = await this._getCms();
-      return (cms.recipes && cms.recipes.length) ? cms.recipes : SeedData.recipes;
+      return API._cached('gocery_cache_recipes', 60000, async () => {
+        const cms = await this._getCms();
+        try {
+          const snap = await FirebaseApp.collections.recipes().where('status', '==', 'published').get();
+          if (!snap.empty || cms.recipesMigrated) {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+            return list;
+          }
+        } catch (e) {
+          console.warn('Recipes collection not available yet, using the old list.', e);
+        }
+        return (cms.recipes && cms.recipes.length) ? cms.recipes : SeedData.recipes;
+      });
     },
 
     async getFaq() {

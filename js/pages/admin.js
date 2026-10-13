@@ -626,116 +626,638 @@ if (view === 'products') {
   }
 
   if (view === 'recipes') {
-    const cmsDoc = await FirebaseApp.collections.cms().doc('main').get();
-    const cms = cmsDoc.exists ? cmsDoc.data() : {};
-    const recipes = (cms.recipes && cms.recipes.length) ? cms.recipes : JSON.parse(JSON.stringify(SeedData.recipes));
+    const recipesCol = FirebaseApp.collections.recipes();
+    let recipes = [];
+
+    // Each recipe is its own document. The first time this page opens, copy the old list over.
+    try {
+      const snap = await recipesCol.get();
+      if (snap.empty) {
+        const cmsDoc = await FirebaseApp.collections.cms().doc('main').get();
+        const cms = cmsDoc.exists ? cmsDoc.data() : {};
+        const legacy = (cms.recipes && cms.recipes.length) ? cms.recipes : JSON.parse(JSON.stringify(SeedData.recipes));
+        const batch = FirebaseApp.db.batch();
+        for (let i = 0; i < legacy.length; i++) {
+          const r = { ...legacy[i], id: legacy[i].id || `recipe-${Date.now()}-${i}`, status: 'published', updatedAt: new Date().toISOString() };
+          batch.set(recipesCol.doc(r.id), r);
+          recipes.push(r);
+        }
+        await batch.commit();
+        await FirebaseApp.collections.cms().doc('main').set({ recipesMigrated: true }, { merge: true });
+        API._clearCache();
+      } else {
+        recipes = snap.docs.map(d => ({ id: d.id, status: 'published', ...d.data() }));
+      }
+    } catch (err) {
+      console.error('Loading recipes failed:', err);
+      renderLayout(`<div class="admin-header"><h1>Recipes</h1></div>
+        <p class="form-error">Could not load recipes. Deploy the latest Firestore rules (firebase deploy --only firestore:rules) and reload this page.</p>`);
+      return;
+    }
+    recipes.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    let tableSearch = '';
+
+    const productsResult = await API.catalog.getProducts();
+    const allProducts = productsResult.data;
+
+    function productById(id) {
+      for (let i = 0; i < allProducts.length; i++) {
+        if (allProducts[i].id === id) return allProducts[i];
+      }
+      return null;
+    }
+
+    function productByName(text) {
+      const wanted = String(text || '').trim().toLowerCase();
+      if (!wanted) return null;
+      for (let i = 0; i < allProducts.length; i++) {
+        if (allProducts[i].name.toLowerCase() === wanted) return allProducts[i];
+      }
+      return null;
+    }
 
     function renderRecipes() {
+      const words = tableSearch.trim().toLowerCase();
+      let rows = '';
+      for (let index = 0; index < recipes.length; index++) {
+        const recipe = recipes[index];
+        if (words && String(recipe.title || '').toLowerCase().indexOf(words) < 0) continue;
+        const published = recipe.status !== 'draft';
+        rows += `
+          <tr>
+            <td>${DOM.escapeHtml(recipe.title || '')}</td>
+            <td>${DOM.escapeHtml(recipe.category || 'Recipes')}</td>
+            <td><span class="status-pill ${published ? 'status-pill--on' : 'status-pill--off'}">${published ? 'Published' : 'Draft'}</span></td>
+            <td>${recipe.date ? Format.date(recipe.date) : '—'}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn--outline btn--sm edit-recipe" data-index="${index}">Edit</button>
+              <button class="btn btn--outline btn--sm duplicate-recipe" data-index="${index}">Duplicate</button>
+              <button class="btn btn--outline btn--sm toggle-recipe" data-index="${index}">${published ? 'Unpublish' : 'Publish'}</button>
+              <button class="btn btn--outline btn--sm delete-recipe" data-index="${index}">Delete</button>
+            </td>
+          </tr>`;
+      }
       DOM.$('#recipes-table-wrap').innerHTML = `
         <table class="admin-table">
-          <thead><tr><th>Title</th><th>Category</th><th>Date</th><th>Actions</th></tr></thead>
-          <tbody>${recipes.length ? recipes.map((recipe, index) => `
-            <tr>
-              <td>${DOM.escapeHtml(recipe.title || '')}</td>
-              <td>${DOM.escapeHtml(recipe.category || 'Recipes')}</td>
-              <td>${recipe.date ? Format.date(recipe.date) : '—'}</td>
-              <td>
-                <button class="btn btn--outline btn--sm edit-recipe" data-index="${index}">Edit</button>
-                <button class="btn btn--outline btn--sm delete-recipe" data-index="${index}">Delete</button>
-              </td>
-            </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted)">No recipes yet</td></tr>'}</tbody>
+          <thead><tr><th>Title</th><th>Category</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--color-text-muted)">No recipes found</td></tr>'}</tbody>
         </table>`;
       bindRecipeActions();
     }
 
-    async function saveRecipes() {
-      await FirebaseApp.collections.cms().doc('main').set({ recipes }, { merge: true });
-      await API.admin.logAction('UPDATE_RECIPES', { count: recipes.length });
+    async function saveRecipe(recipe) {
+      recipe.updatedAt = new Date().toISOString();
+      await recipesCol.doc(recipe.id).set(recipe);
+      API._clearCache();
+      await API.admin.logAction('SAVE_RECIPE', { id: recipe.id, title: recipe.title });
       renderRecipes();
     }
 
-    function openRecipeEditor(index) {
+    async function removeRecipe(recipe) {
+      await recipesCol.doc(recipe.id).delete();
+      API._clearCache();
+      await API.admin.logAction('DELETE_RECIPE', { id: recipe.id, title: recipe.title });
+    }
+
+    function openRecipeEditor(index, template) {
       const isNew = index === undefined;
-      const recipe = isNew
-        ? { title: '', category: 'Recipes', date: new Date().toISOString().split('T')[0], image: '🍲', excerpt: '', content: '' }
+      const source = isNew
+        ? template || { title: '', category: 'Recipes', date: new Date().toISOString().split('T')[0], image: '🍲', excerpt: '', content: '' }
         : recipes[index];
+      const hasPhoto = /^https?:/.test(source.image || '');
+
+      // The draft lives in memory while the form is open, so rows can be added and removed without losing typing.
+      const draft = {
+        title: source.title || '',
+        status: source.status || 'published',
+        category: source.category || 'Recipes',
+        date: source.date || '',
+        excerpt: source.excerpt || '',
+        content: source.content || '',
+        prepTime: source.prepTime || '',
+        cookTime: source.cookTime || '',
+        servings: source.servings || '',
+        difficulty: source.difficulty || '',
+        photoUrl: hasPhoto ? source.image : '',
+        emoji: hasPhoto ? '🍲' : (source.image || '🍲'),
+        ingredients: [],
+        steps: (source.steps || []).slice(),
+        tips: (source.tips || []).slice()
+      };
+      const oldIngredients = source.ingredients || [];
+      for (let i = 0; i < oldIngredients.length; i++) {
+        draft.ingredients.push({
+          name: oldIngredients[i].name || '',
+          amount: oldIngredients[i].amount || '',
+          productId: oldIngredients[i].productId || '',
+          variantId: oldIngredients[i].variantId || '',
+          qty: oldIngredients[i].qty || 1
+        });
+      }
+      if (!draft.ingredients.length) draft.ingredients.push({ name: '', amount: '', productId: '', variantId: '', qty: 1 });
+      if (!draft.steps.length) draft.steps.push('');
+
       DOM.$('#recipe-editor').hidden = false;
       DOM.$('#recipe-editor').innerHTML = `
         <h2>${isNew ? 'Add Recipe' : 'Edit Recipe'}</h2>
-        <div class="form-group"><label>Title</label><input id="re-title" value="${DOM.escapeHtml(recipe.title || '')}" required></div>
-        <div class="form-group"><label>Category</label><input id="re-category" value="${DOM.escapeHtml(recipe.category || 'Recipes')}"></div>
-        <div class="form-group"><label>Date</label><input id="re-date" type="date" value="${DOM.escapeHtml(recipe.date || '')}"></div>
-        <div class="form-group"><label>Image or Emoji</label><input id="re-image" value="${DOM.escapeHtml(recipe.image || '🍲')}" placeholder="Emoji or image URL"></div>
-        <div class="form-group"><label>Short Description</label><textarea id="re-excerpt" rows="2">${DOM.escapeHtml(recipe.excerpt || '')}</textarea></div>
-        <div class="form-group"><label>Recipe Content (intro)</label><textarea id="re-content" rows="4">${DOM.escapeHtml(recipe.content || '')}</textarea></div>
-        <div class="form-group"><label>Prep Time</label><input id="re-prep" value="${DOM.escapeHtml(recipe.prepTime || '')}" placeholder="e.g. 15 min"></div>
-        <div class="form-group"><label>Cook Time</label><input id="re-cook" value="${DOM.escapeHtml(recipe.cookTime || '')}" placeholder="e.g. 30 min"></div>
-        <div class="form-group"><label>Servings</label><input id="re-servings" type="number" min="1" value="${DOM.escapeHtml(String(recipe.servings || ''))}"></div>
-        <div class="form-group"><label>Difficulty</label><input id="re-difficulty" value="${DOM.escapeHtml(recipe.difficulty || '')}" placeholder="Easy, Medium, Hard"></div>
-        <div class="form-group"><label>Ingredients (one per line: Name | Amount | productId | variantId | qty)</label>
-          <textarea id="re-ingredients" rows="6" placeholder="Large Shrimp (Sugpo) | 500 g | p015 | v015a | 1&#10;Sinigang mix | 1 pack">${DOM.escapeHtml((recipe.ingredients || []).map(i => (i.productId ? [i.name, i.amount || '', i.productId, i.variantId || '', i.qty || 1] : [i.name, i.amount || '']).join(' | ')).join('\n'))}</textarea>
-          <small>Leave out productId to show it as a pantry item. Only ingredients with a productId get an order button.</small></div>
-        <div class="form-group"><label>Steps (one per line)</label><textarea id="re-steps" rows="6">${DOM.escapeHtml((recipe.steps || []).join('\n'))}</textarea></div>
-        <div class="form-group"><label>Tips (one per line)</label><textarea id="re-tips" rows="3">${DOM.escapeHtml((recipe.tips || []).join('\n'))}</textarea></div>
+        <div class="form-group"><label>Title</label><input id="re-title" value="${DOM.escapeHtml(draft.title)}" required></div>
+        <div class="form-group"><label>Status</label>
+          <select id="re-status">
+            <option value="published" ${draft.status !== 'draft' ? 'selected' : ''}>Published (visible to customers)</option>
+            <option value="draft" ${draft.status === 'draft' ? 'selected' : ''}>Draft (hidden from customers)</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Category</label><input id="re-category" value="${DOM.escapeHtml(draft.category)}"></div>
+        <div class="form-group"><label>Date</label><input id="re-date" type="date" value="${DOM.escapeHtml(draft.date)}"></div>
+
+        <div class="form-group"><label>Photo</label>
+          <div class="re-photo">
+            <div class="re-photo__preview" id="re-photo-preview"></div>
+            <div>
+              <input type="file" id="re-photo-file" accept="image/*">
+              <button type="button" class="btn btn--outline btn--sm" id="re-photo-remove">Remove photo</button>
+              <p class="form-error" id="re-photo-msg"></p>
+              <small>No photo? The first ingredient's product photo is used, then the emoji below.</small>
+            </div>
+          </div>
+        </div>
+        <div class="form-group"><label>Emoji (shown when there is no photo)</label><input id="re-emoji" value="${DOM.escapeHtml(draft.emoji)}" maxlength="4"></div>
+
+        <div class="form-group"><label>Short Description</label><textarea id="re-excerpt" rows="2">${DOM.escapeHtml(draft.excerpt)}</textarea></div>
+        <div class="form-group"><label>Intro</label><textarea id="re-content" rows="3">${DOM.escapeHtml(draft.content)}</textarea></div>
+        <div class="form-group"><label>Prep Time</label><input id="re-prep" value="${DOM.escapeHtml(draft.prepTime)}" placeholder="e.g. 15 min"></div>
+        <div class="form-group"><label>Cook Time</label><input id="re-cook" value="${DOM.escapeHtml(draft.cookTime)}" placeholder="e.g. 30 min"></div>
+        <div class="form-group"><label>Servings</label><input id="re-servings" type="number" min="1" value="${DOM.escapeHtml(String(draft.servings))}"></div>
+        <div class="form-group"><label>Difficulty</label>
+          <select id="re-difficulty">
+            <option value="">—</option>
+            ${['Easy', 'Medium', 'Hard'].map(d => `<option ${draft.difficulty === d ? 'selected' : ''}>${d}</option>`).join('')}
+          </select>
+        </div>
+
+        <h3 class="re-heading">Ingredients</h3>
+        <small>Type a product name to link it, so customers can order it from the recipe. Leave the product empty for pantry items like salt.</small>
+        <datalist id="re-products">${allProducts.map(p => `<option value="${DOM.escapeHtml(p.name)}"></option>`).join('')}</datalist>
+        <div id="re-ingredients-box"></div>
+        <button type="button" class="btn btn--outline btn--sm" id="add-ingredient">+ Add ingredient</button>
+        <details class="re-paste">
+          <summary>Quick add: paste a list of ingredients</summary>
+          <textarea id="re-paste-ing" rows="5" placeholder="1 kg sugpo&#10;2 tbsp patis&#10;3 cloves garlic, minced&#10;salt to taste"></textarea>
+          <button type="button" class="btn btn--outline btn--sm" id="re-paste-ing-btn">Add and match to products</button>
+          <p class="re-paste__msg" id="re-paste-ing-msg"></p>
+        </details>
+
+        <h3 class="re-heading">Steps</h3>
+        <div id="re-steps-box"></div>
+        <button type="button" class="btn btn--outline btn--sm" id="add-step">+ Add step</button>
+        <details class="re-paste">
+          <summary>Quick add: paste the steps</summary>
+          <textarea id="re-paste-steps" rows="5" placeholder="One step per line. Numbers like 1. or 2) are removed."></textarea>
+          <button type="button" class="btn btn--outline btn--sm" id="re-paste-steps-btn">Add steps</button>
+        </details>
+
+        <h3 class="re-heading">Tips (optional)</h3>
+        <div id="re-tips-box"></div>
+        <button type="button" class="btn btn--outline btn--sm" id="add-tip">+ Add tip</button>
+
+        <div class="re-warnings" id="re-warnings" hidden></div>
         <p class="form-error" id="re-error"></p>
-        <div class="modal-actions" style="display:flex;gap:0.5rem">
+        <div class="modal-actions" style="display:flex;gap:0.5rem;margin-top:1rem">
           <button class="btn btn--primary" id="re-save">Save Recipe</button>
           <button class="btn btn--outline" id="re-cancel">Cancel</button>
         </div>`;
 
+      // ---- reading the form back into the draft ----
+      function syncDraft() {
+        draft.title = DOM.$('#re-title').value;
+        draft.status = DOM.$('#re-status').value;
+        draft.category = DOM.$('#re-category').value;
+        draft.date = DOM.$('#re-date').value;
+        draft.emoji = DOM.$('#re-emoji').value;
+        draft.excerpt = DOM.$('#re-excerpt').value;
+        draft.content = DOM.$('#re-content').value;
+        draft.prepTime = DOM.$('#re-prep').value;
+        draft.cookTime = DOM.$('#re-cook').value;
+        draft.servings = DOM.$('#re-servings').value;
+        draft.difficulty = DOM.$('#re-difficulty').value;
+
+        const rows = DOM.$$('.ing-row');
+        for (let i = 0; i < rows.length && i < draft.ingredients.length; i++) {
+          draft.ingredients[i].name = rows[i].querySelector('.ing-name').value;
+          draft.ingredients[i].amount = rows[i].querySelector('.ing-amount').value;
+          const variantSelect = rows[i].querySelector('.ing-variant');
+          if (variantSelect) draft.ingredients[i].variantId = variantSelect.value;
+          const qtyInput = rows[i].querySelector('.ing-qty');
+          if (qtyInput) draft.ingredients[i].qty = parseInt(qtyInput.value, 10) || 1;
+        }
+        const stepBoxes = DOM.$$('#re-steps-box textarea');
+        for (let i = 0; i < stepBoxes.length && i < draft.steps.length; i++) draft.steps[i] = stepBoxes[i].value;
+        const tipBoxes = DOM.$$('#re-tips-box textarea');
+        for (let i = 0; i < tipBoxes.length && i < draft.tips.length; i++) draft.tips[i] = tipBoxes[i].value;
+      }
+
+      // ---- photo ----
+      function renderPhoto() {
+        DOM.$('#re-photo-preview').innerHTML = draft.photoUrl
+          ? `<img src="${DOM.escapeHtml(draft.photoUrl)}" alt="Recipe photo">`
+          : `<span>${DOM.escapeHtml(draft.emoji || '🍲')}</span>`;
+        DOM.$('#re-photo-remove').hidden = !draft.photoUrl;
+      }
+      DOM.$('#re-photo-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const msg = DOM.$('#re-photo-msg');
+        msg.textContent = 'Uploading…';
+        try {
+          draft.photoUrl = await API.uploadImage(file, 'recipes');
+          msg.textContent = '';
+        } catch (err) {
+          msg.textContent = err.message || 'Upload failed.';
+        }
+        e.target.value = '';
+        renderPhoto();
+      });
+      DOM.$('#re-photo-remove').addEventListener('click', () => {
+        draft.photoUrl = '';
+        renderPhoto();
+      });
+      DOM.$('#re-emoji').addEventListener('input', () => {
+        draft.emoji = DOM.$('#re-emoji').value;
+        if (!draft.photoUrl) renderPhoto();
+      });
+
+      // ---- ingredient rows ----
+      function variantOptions(product, selectedId) {
+        let html = '';
+        for (let i = 0; i < product.variants.length; i++) {
+          const v = product.variants[i];
+          html += `<option value="${DOM.escapeHtml(v.id)}" ${v.id === selectedId ? 'selected' : ''}>${DOM.escapeHtml(v.unit)} – ${Format.currency(v.price)}${v.stock <= 0 ? ' (sold out)' : ''}</option>`;
+        }
+        return html;
+      }
+
+      function renderIngredients() {
+        let html = '';
+        for (let i = 0; i < draft.ingredients.length; i++) {
+          const ing = draft.ingredients[i];
+          const product = productById(ing.productId);
+          html += `
+            <div class="ing-row" data-i="${i}">
+              <div class="ing-row__main">
+                <label>Product
+                  <input class="ing-product" list="re-products" value="${DOM.escapeHtml(product ? product.name : '')}" placeholder="Search product (empty = pantry item)">
+                </label>
+                ${product ? `
+                  <label>Size <select class="ing-variant">${variantOptions(product, ing.variantId)}</select></label>
+                  <label>Qty <input class="ing-qty" type="number" min="1" value="${ing.qty || 1}"></label>` : ''}
+              </div>
+              <div class="ing-row__main">
+                <label>Ingredient name <input class="ing-name" value="${DOM.escapeHtml(ing.name)}" placeholder="e.g. Large Shrimp (Sugpo)"></label>
+                <label>Amount in the recipe <input class="ing-amount" value="${DOM.escapeHtml(ing.amount)}" placeholder="e.g. 500 g"></label>
+                <button type="button" class="btn btn--outline btn--sm ing-remove" aria-label="Remove ingredient">Remove</button>
+              </div>
+              ${product ? '' : '<small class="ing-pantry">Pantry item: customers will not see an order button for this one.</small>'}
+            </div>`;
+        }
+        DOM.$('#re-ingredients-box').innerHTML = html;
+
+        const rows = DOM.$$('.ing-row');
+        for (let i = 0; i < rows.length; i++) {
+          rows[i].querySelector('.ing-product').addEventListener('change', (e) => {
+            syncDraft();
+            const ing = draft.ingredients[i];
+            const found = productByName(e.target.value);
+            if (found) {
+              const oldProduct = productById(ing.productId);
+              ing.productId = found.id;
+              let first = null;
+              for (let j = 0; j < found.variants.length; j++) {
+                if (!first && found.variants[j].stock > 0) first = found.variants[j];
+              }
+              ing.variantId = (first || found.variants[0]).id;
+              ing.qty = 1;
+              // Fill the display name unless the admin already typed a different one.
+              if (!ing.name.trim() || (oldProduct && ing.name === oldProduct.name)) ing.name = found.name;
+            } else {
+              ing.productId = '';
+              ing.variantId = '';
+            }
+            renderIngredients();
+          });
+          rows[i].querySelector('.ing-remove').addEventListener('click', () => {
+            syncDraft();
+            draft.ingredients.splice(i, 1);
+            if (!draft.ingredients.length) draft.ingredients.push({ name: '', amount: '', productId: '', variantId: '', qty: 1 });
+            renderIngredients();
+          });
+        }
+      }
+      DOM.$('#add-ingredient').addEventListener('click', () => {
+        syncDraft();
+        draft.ingredients.push({ name: '', amount: '', productId: '', variantId: '', qty: 1 });
+        renderIngredients();
+        const inputs = DOM.$$('.ing-product');
+        inputs[inputs.length - 1].focus();
+      });
+
+      // ---- steps and tips (same editor for both lists) ----
+      function renderTextList(boxId, key, label) {
+        const list = draft[key];
+        let html = '';
+        for (let i = 0; i < list.length; i++) {
+          html += `
+            <div class="text-row" data-i="${i}">
+              <span class="text-row__num">${i + 1}</span>
+              <textarea rows="2" placeholder="${label} ${i + 1}">${DOM.escapeHtml(list[i])}</textarea>
+              <div class="text-row__btns">
+                <button type="button" class="btn btn--outline btn--sm row-up" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+                <button type="button" class="btn btn--outline btn--sm row-down" ${i === list.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+                <button type="button" class="btn btn--outline btn--sm row-remove" aria-label="Remove">✕</button>
+              </div>
+            </div>`;
+        }
+        DOM.$(boxId).innerHTML = html;
+
+        const rows = DOM.$$(boxId + ' .text-row');
+        for (let i = 0; i < rows.length; i++) {
+          rows[i].querySelector('.row-up').addEventListener('click', () => {
+            syncDraft();
+            const tmp = list[i - 1]; list[i - 1] = list[i]; list[i] = tmp;
+            renderTextList(boxId, key, label);
+          });
+          rows[i].querySelector('.row-down').addEventListener('click', () => {
+            syncDraft();
+            const tmp = list[i + 1]; list[i + 1] = list[i]; list[i] = tmp;
+            renderTextList(boxId, key, label);
+          });
+          rows[i].querySelector('.row-remove').addEventListener('click', () => {
+            syncDraft();
+            list.splice(i, 1);
+            renderTextList(boxId, key, label);
+          });
+        }
+      }
+      function addToList(boxId, key, label) {
+        syncDraft();
+        draft[key].push('');
+        renderTextList(boxId, key, label);
+        const boxes = DOM.$$(boxId + ' textarea');
+        boxes[boxes.length - 1].focus();
+      }
+      DOM.$('#add-step').addEventListener('click', () => addToList('#re-steps-box', 'steps', 'Step'));
+      DOM.$('#add-tip').addEventListener('click', () => addToList('#re-tips-box', 'tips', 'Tip'));
+
+      // ---- quick add: paste ingredients and steps ----
+      const STOP_WORDS = ['fresh', 'of', 'the', 'a', 'an', 'and', 'large', 'medium', 'small', 'whole', 'ripe', 'sliced', 'chopped', 'minced', 'diced', 'cubed', 'crushed', 'peeled', 'boneless', 'skinless'];
+      const UNIT_WORDS = 'kg|kgs|g|gram|grams|mg|l|liter|liters|litre|litres|ml|tbsp|tsp|tablespoon|tablespoons|teaspoon|teaspoons|cup|cups|pc|pcs|piece|pieces|clove|cloves|pack|packs|bunch|bunches|head|heads|can|cans|bottle|bottles|slice|slices|bundle|bundles|sprig|sprigs|pinch|dash';
+
+      function stem(word) {
+        if (word.length > 4 && word.slice(-3) === 'oes') return word.slice(0, -2);
+        if (word.length > 4 && word.slice(-3) === 'ies') return word.slice(0, -3) + 'y';
+        if (word.length > 3 && word.slice(-1) === 's' && word.slice(-2) !== 'ss') return word.slice(0, -1);
+        return word;
+      }
+
+      function tokens(text) {
+        const parts = String(text).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/);
+        const out = [];
+        for (let i = 0; i < parts.length; i++) {
+          if (!parts[i] || STOP_WORDS.indexOf(parts[i]) >= 0) continue;
+          out.push(stem(parts[i]));
+        }
+        return out;
+      }
+
+      // Finds the product whose name contains every word of the ingredient (the shortest name wins).
+      function matchProduct(name) {
+        const wanted = tokens(name.replace(/\(.*?\)/g, ' '));
+        if (!wanted.length) return null;
+        let best = null;
+        let bestSize = 0;
+        for (let i = 0; i < allProducts.length; i++) {
+          const have = tokens(allProducts[i].name);
+          let all = true;
+          for (let j = 0; j < wanted.length; j++) {
+            if (have.indexOf(wanted[j]) < 0) all = false;
+          }
+          if (all && (!best || have.length < bestSize)) { best = allProducts[i]; bestSize = have.length; }
+        }
+        return best;
+      }
+
+      // "3 cloves garlic, minced" -> amount "3 cloves, minced", name "garlic"
+      function parseIngredientLine(line) {
+        let text = line.replace(/^[\s\-\*\u2022\u25CF\u25AA]+/, '').trim();
+        if (!text) return null;
+        let amount = '';
+        const q = text.match(/^([\d\u00BC\u00BD\u00BE\u2153\u2154][\d\s\/\.\-\u2013\u00BC\u00BD\u00BE\u2153\u2154]*)/);
+        if (q) {
+          amount = q[1].trim();
+          text = text.slice(q[1].length).trim();
+          const u = text.match(new RegExp('^(' + UNIT_WORDS + ')\\b\\.?\\s*', 'i'));
+          if (u) {
+            amount += ' ' + u[1];
+            text = text.slice(u[0].length).trim();
+          }
+        }
+        text = text.replace(/^of\s+/i, '');
+        const taste = text.match(/\s+to taste$/i);
+        if (taste) {
+          text = text.slice(0, text.length - taste[0].length).trim();
+          amount = amount ? amount + ', to taste' : 'to taste';
+        }
+        const comma = text.indexOf(',');
+        if (comma > 0) {
+          const note = text.slice(comma + 1).trim();
+          text = text.slice(0, comma).trim();
+          if (note) amount = amount ? amount + ', ' + note : note;
+        }
+        if (!text) return null;
+        return { name: text.charAt(0).toUpperCase() + text.slice(1), amount };
+      }
+
+      DOM.$('#re-paste-ing-btn').addEventListener('click', () => {
+        syncDraft();
+        const lines = DOM.$('#re-paste-ing').value.split('\n');
+        // Replace the single empty starter row instead of leaving it behind.
+        if (draft.ingredients.length === 1 && !draft.ingredients[0].name.trim() && !draft.ingredients[0].productId) draft.ingredients = [];
+        let added = 0;
+        let matched = 0;
+        for (let i = 0; i < lines.length; i++) {
+          const parsed = parseIngredientLine(lines[i]);
+          if (!parsed) continue;
+          const ing = { name: parsed.name, amount: parsed.amount, productId: '', variantId: '', qty: 1 };
+          const product = matchProduct(parsed.name);
+          if (product) {
+            let first = null;
+            for (let j = 0; j < product.variants.length; j++) {
+              if (!first && product.variants[j].stock > 0) first = product.variants[j];
+            }
+            ing.productId = product.id;
+            ing.variantId = (first || product.variants[0]).id;
+            ing.name = product.name;
+            matched++;
+          }
+          draft.ingredients.push(ing);
+          added++;
+        }
+        if (!draft.ingredients.length) draft.ingredients.push({ name: '', amount: '', productId: '', variantId: '', qty: 1 });
+        DOM.$('#re-paste-ing').value = '';
+        DOM.$('#re-paste-ing-msg').textContent = added
+          ? `Added ${added} ingredient${added === 1 ? '' : 's'}. ${matched} matched to products. Please check each match above.`
+          : 'Nothing to add. Paste one ingredient per line.';
+        renderIngredients();
+      });
+
+      DOM.$('#re-paste-steps-btn').addEventListener('click', () => {
+        syncDraft();
+        const lines = DOM.$('#re-paste-steps').value.split('\n');
+        if (draft.steps.length === 1 && !draft.steps[0].trim()) draft.steps = [];
+        for (let i = 0; i < lines.length; i++) {
+          const step = lines[i].replace(/^\s*(?:step\s*)?\d+\s*[\)\.:\-]\s*/i, '').replace(/^[\s\-\*\u2022]+/, '').trim();
+          if (step) draft.steps.push(step);
+        }
+        if (!draft.steps.length) draft.steps.push('');
+        DOM.$('#re-paste-steps').value = '';
+        renderTextList('#re-steps-box', 'steps', 'Step');
+      });
+
+      renderPhoto();
+      renderIngredients();
+      renderTextList('#re-steps-box', 'steps', 'Step');
+      renderTextList('#re-tips-box', 'tips', 'Tip');
+
+      let shownWarnings = '';
       DOM.$('#re-cancel').addEventListener('click', () => { DOM.$('#recipe-editor').hidden = true; });
       DOM.$('#re-save').addEventListener('click', async () => {
-        const title = DOM.$('#re-title').value.trim();
+        syncDraft();
+        const title = draft.title.trim();
         if (!title) { DOM.$('#re-error').textContent = 'Title is required.'; return; }
-        const lines = id => DOM.$(id).value.split('\n').map(l => l.trim()).filter(Boolean);
-        const ingredients = lines('#re-ingredients').map(line => {
-          const [name, amount, productId, variantId, qty] = line.split('|').map(x => x.trim());
-          const ing = { name, amount: amount || '' };
-          if (productId) {
-            ing.productId = productId;
-            if (variantId) ing.variantId = variantId;
-            ing.qty = parseInt(qty, 10) || 1;
+
+        const keepText = (list) => {
+          const out = [];
+          for (let i = 0; i < list.length; i++) {
+            if (list[i].trim()) out.push(list[i].trim());
           }
-          return ing;
-        });
-        const updated = {
-          ...(isNew ? {} : recipe),
-          prepTime: DOM.$('#re-prep').value.trim(),
-          cookTime: DOM.$('#re-cook').value.trim(),
-          servings: parseInt(DOM.$('#re-servings').value, 10) || '',
-          difficulty: DOM.$('#re-difficulty').value.trim(),
-          ingredients,
-          steps: lines('#re-steps'),
-          tips: lines('#re-tips'),
-          id: isNew ? `recipe-${Date.now()}` : recipe.id,
-          title,
-          category: DOM.$('#re-category').value.trim() || 'Recipes',
-          date: DOM.$('#re-date').value,
-          image: DOM.$('#re-image').value.trim() || '🍲',
-          excerpt: DOM.$('#re-excerpt').value.trim(),
-          content: DOM.$('#re-content').value.trim()
+          return out;
         };
-        if (isNew) recipes.push(updated);
+
+        const ingredients = [];
+        for (let i = 0; i < draft.ingredients.length; i++) {
+          const ing = draft.ingredients[i];
+          const product = productById(ing.productId);
+          const name = ing.name.trim() || (product ? product.name : '');
+          if (!name) continue;
+          const clean = { name, amount: ing.amount.trim() };
+          if (product) {
+            let variantOk = false;
+            for (let j = 0; j < product.variants.length; j++) {
+              if (product.variants[j].id === ing.variantId) variantOk = true;
+            }
+            clean.productId = product.id;
+            clean.variantId = variantOk ? ing.variantId : product.variants[0].id;
+            clean.qty = Math.max(1, parseInt(ing.qty, 10) || 1);
+          }
+          ingredients.push(clean);
+        }
+        // Warnings: published recipes get a last check before saving (draft recipes can be unfinished).
+        const warnings = [];
+        if (draft.status !== 'draft') {
+          if (!draft.photoUrl) warnings.push('No photo. The first ingredient photo or the emoji will be shown instead.');
+          if (!draft.excerpt.trim()) warnings.push('No short description.');
+          if (!draft.prepTime.trim() && !draft.cookTime.trim()) warnings.push('No prep or cook time.');
+          if (!keepText(draft.steps).length) warnings.push('No steps yet.');
+          let linked = 0;
+          for (let i = 0; i < draft.ingredients.length; i++) {
+            const ing = draft.ingredients[i];
+            if (ing.productId && !productById(ing.productId)) {
+              warnings.push(`"${ing.name || 'An ingredient'}" was linked to a product that no longer exists. It will be saved as a pantry item.`);
+            }
+          }
+          for (let i = 0; i < ingredients.length; i++) {
+            if (!ingredients[i].productId) continue;
+            linked++;
+            const product = productById(ingredients[i].productId);
+            let stock = 0;
+            for (let j = 0; j < product.variants.length; j++) {
+              if (product.variants[j].id === ingredients[i].variantId) stock = product.variants[j].stock;
+            }
+            if (stock <= 0) warnings.push(`"${ingredients[i].name}" is sold out right now, so customers cannot order it.`);
+          }
+          if (ingredients.length && !linked) warnings.push('No ingredient is linked to a product, so customers cannot order from this recipe.');
+        }
+        const warningKey = warnings.join('|');
+        if (warnings.length && warningKey !== shownWarnings) {
+          shownWarnings = warningKey;
+          const box = DOM.$('#re-warnings');
+          box.hidden = false;
+          box.innerHTML = `<strong>Before you save:</strong><ul>${warnings.map(w => `<li>${DOM.escapeHtml(w)}</li>`).join('')}</ul><small>Click Save again to save anyway, or fix these first.</small>`;
+          DOM.$('#re-save').textContent = 'Save anyway';
+          return;
+        }
+
+        const updated = {
+          ...(isNew ? {} : source),
+          id: isNew ? `recipe-${Date.now()}` : source.id,
+          status: draft.status === 'draft' ? 'draft' : 'published',
+          title,
+          category: draft.category.trim() || 'Recipes',
+          date: draft.date,
+          image: draft.photoUrl || draft.emoji.trim() || '🍲',
+          excerpt: draft.excerpt.trim(),
+          content: draft.content.trim(),
+          prepTime: draft.prepTime.trim(),
+          cookTime: draft.cookTime.trim(),
+          servings: parseInt(draft.servings, 10) || '',
+          difficulty: draft.difficulty,
+          ingredients,
+          steps: keepText(draft.steps),
+          tips: keepText(draft.tips)
+        };
+        if (isNew) recipes.unshift(updated);
         else recipes[index] = updated;
         DOM.$('#recipe-editor').hidden = true;
-        await saveRecipes();
+        await saveRecipe(updated);
+        Components.toast(updated.status === 'draft' ? 'Draft saved (hidden from customers)' : 'Recipe saved');
       });
     }
 
     function bindRecipeActions() {
       DOM.$$('.edit-recipe').forEach(button => button.addEventListener('click', () => openRecipeEditor(parseInt(button.dataset.index, 10))));
+
+      DOM.$$('.duplicate-recipe').forEach(button => button.addEventListener('click', () => {
+        const original = recipes[parseInt(button.dataset.index, 10)];
+        const copy = JSON.parse(JSON.stringify(original));
+        copy.title = (original.title || 'Recipe') + ' (copy)';
+        copy.status = 'draft';
+        copy.date = new Date().toISOString().split('T')[0];
+        openRecipeEditor(undefined, copy);
+        DOM.$('#recipe-editor').scrollIntoView({ behavior: 'smooth' });
+      }));
+
+      DOM.$$('.toggle-recipe').forEach(button => button.addEventListener('click', async () => {
+        const recipe = recipes[parseInt(button.dataset.index, 10)];
+        recipe.status = recipe.status === 'draft' ? 'published' : 'draft';
+        await saveRecipe(recipe);
+        Components.toast(recipe.status === 'draft' ? 'Recipe hidden from customers' : 'Recipe published');
+      }));
+
       DOM.$$('.delete-recipe').forEach(button => button.addEventListener('click', async () => {
-        if (!confirm('Delete this recipe?')) return;
-        recipes.splice(parseInt(button.dataset.index, 10), 1);
-        await saveRecipes();
+        const index = parseInt(button.dataset.index, 10);
+        if (!confirm('Delete this recipe? This cannot be undone.')) return;
+        const removed = recipes.splice(index, 1)[0];
+        await removeRecipe(removed);
+        renderRecipes();
       }));
     }
 
     renderLayout(`
       <div class="admin-header"><h1>Recipes</h1><button class="btn btn--primary btn--sm" id="add-recipe">+ Add Recipe</button></div>
+      <input type="search" id="recipe-table-search" class="admin-search" placeholder="Search recipes by title…" aria-label="Search recipes">
       <div id="recipes-table-wrap"></div>
       <div id="recipe-editor" class="admin-form" hidden></div>`);
     DOM.$('#add-recipe').addEventListener('click', () => openRecipeEditor());
+    DOM.$('#recipe-table-search').addEventListener('input', e => { tableSearch = e.target.value; renderRecipes(); });
     renderRecipes();
   }
 

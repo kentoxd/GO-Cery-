@@ -73,8 +73,54 @@ App.ready().then(async () => {
     });
   }
 
+  // ---- search and category filter ----
+  let search = '';
+  let category = '';
+
+  function visiblePosts() {
+    const words = search.trim().toLowerCase();
+    const list = [];
+    for (let i = 0; i < posts.length; i++) {
+      const p = posts[i];
+      if (category && (p.category || 'Recipes') !== category) continue;
+      if (words) {
+        let text = (p.title + ' ' + (p.excerpt || '') + ' ' + (p.category || '')).toLowerCase();
+        const ings = p.ingredients || [];
+        for (let j = 0; j < ings.length; j++) text += ' ' + String(ings[j].name).toLowerCase();
+        if (text.indexOf(words) < 0) continue;
+      }
+      list.push(p);
+    }
+    return list;
+  }
+
+  function renderFilters() {
+    const names = [];
+    for (let i = 0; i < posts.length; i++) {
+      const c = posts[i].category || 'Recipes';
+      if (names.indexOf(c) < 0) names.push(c);
+    }
+    let chips = `<button class="chip ${category === '' ? 'chip--active' : ''}" data-cat="">All</button>`;
+    for (let i = 0; i < names.length; i++) {
+      chips += `<button class="chip ${category === names[i] ? 'chip--active' : ''}" data-cat="${DOM.escapeHtml(names[i])}">${DOM.escapeHtml(names[i])}</button>`;
+    }
+    DOM.$('#recipe-filters').innerHTML = `
+      <input type="search" id="recipe-search" placeholder="Search recipes or ingredients…" aria-label="Search recipes" value="${DOM.escapeHtml(search)}">
+      <div class="chips">${chips}</div>`;
+    DOM.$('#recipe-search').addEventListener('input', e => { search = e.target.value; renderGrid(); });
+    DOM.$$('#recipe-filters .chip').forEach(btn => {
+      btn.addEventListener('click', () => { category = btn.dataset.cat; renderFilters(); renderGrid(); });
+    });
+  }
+
   function renderGrid() {
-    DOM.$('#blog-grid').innerHTML = posts.map(p => {
+    const list = visiblePosts();
+    if (!list.length) {
+      DOM.$('#blog-grid').innerHTML = `<div class="empty-state"><p>No recipes match your search.</p><button class="btn btn--primary" id="clear-recipe-filters">Clear filters</button></div>`;
+      DOM.$('#clear-recipe-filters').addEventListener('click', () => { search = ''; category = ''; renderFilters(); renderGrid(); });
+      return;
+    }
+    DOM.$('#blog-grid').innerHTML = list.map(p => {
       const favorited = isFavorite(p.id);
       return `
         <article class="recipe-row" data-id="${p.id}">
@@ -215,5 +261,6 @@ App.ready().then(async () => {
   }
 
   renderFavorites();
+  renderFilters();
   renderGrid();
 });

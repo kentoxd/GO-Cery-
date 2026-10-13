@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "go--cery",
     "public": ".",
     "ignore": [
       "firebase.json",

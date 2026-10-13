@@ -37,6 +37,12 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // One document per recipe. Customers only see published ones; admins see drafts too.
+    match /recipes/{id} {
+      allow read: if isAdmin() || resource.data.status == 'published';
+      allow write: if isAdmin();
+    }
+
     match /cms/{id} {
       allow read: if true;
       allow write: if isAdmin();
@@ -69,7 +75,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'Pending'
-        && request.resource.data.inventoryDeducted == false
+        && request.resource.data.inventoryDeducted is bool
         && request.resource.data.paymentStatus in ['pending_collection', 'awaiting_manual_verification']
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0

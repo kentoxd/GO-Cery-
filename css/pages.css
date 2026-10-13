@@ -1353,3 +1353,39 @@
 @media (max-width: 720px) {
   .hero::after { background: rgba(10, 40, 28, 0.78); }
 }
+
+/* ---- Admin recipe editor ---- */
+.re-heading { margin: 1.5rem 0 0.25rem; color: var(--color-primary); }
+.re-photo { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.re-photo__preview { width: 140px; height: 105px; border-radius: 8px; overflow: hidden; background: #fff7ed; border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; }
+.re-photo__preview img { width: 100%; height: 100%; object-fit: cover; }
+.ing-row { border: 1px solid var(--color-border); border-radius: 10px; padding: 0.75rem; margin: 0.6rem 0; background: #fafafa; }
+.ing-row__main { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; margin-bottom: 0.5rem; }
+.ing-row__main label { display: flex; flex-direction: column; font-size: 0.8rem; font-weight: 600; flex: 1 1 160px; gap: 0.2rem; }
+.ing-row__main .ing-qty { width: 80px; }
+.ing-row__main label:has(.ing-qty) { flex: 0 0 80px; }
+.ing-pantry { color: var(--color-text-muted); }
+.text-row { display: flex; gap: 0.5rem; align-items: flex-start; margin: 0.5rem 0; }
+.text-row__num { width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; margin-top: 0.35rem; }
+.text-row textarea { flex: 1; }
+.text-row__btns { display: flex; flex-direction: column; gap: 0.25rem; }
+
+/* ---- Recipe search and category chips ---- */
+.recipes-main { min-width: 0; }
+.recipes-filters { margin-bottom: 1rem; }
+.recipes-filters input[type="search"] { width: 100%; padding: 0.7rem 1rem; border: 1.5px solid var(--color-border); border-radius: 999px; font-size: 1rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.chip { padding: 0.35rem 0.9rem; border-radius: 999px; border: 1.5px solid var(--color-border); background: #fff; cursor: pointer; font-size: 0.85rem; font-weight: 600; min-height: 36px; }
+.chip--active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+/* ---- Recipe admin: status, search, paste, warnings ---- */
+.status-pill { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+.status-pill--on { background: #dcfce7; color: #166534; }
+.status-pill--off { background: #f3f4f6; color: #4b5563; }
+.admin-search { width: 100%; max-width: 360px; padding: 0.55rem 0.9rem; border: 1.5px solid var(--color-border); border-radius: 8px; margin-bottom: 1rem; }
+.re-paste { margin: 0.75rem 0; padding: 0.6rem 0.8rem; border: 1px dashed var(--color-border); border-radius: 8px; }
+.re-paste summary { cursor: pointer; font-weight: 600; color: var(--color-primary); }
+.re-paste textarea { width: 100%; margin: 0.6rem 0; }
+.re-paste__msg { margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-primary-dark); }
+.re-warnings { margin: 1rem 0 0; padding: 0.8rem 1rem; background: #fff7ed; border: 2px solid var(--color-accent-dark); border-radius: 8px; }
+.re-warnings ul { margin: 0.4rem 0 0.4rem 1.2rem; }
