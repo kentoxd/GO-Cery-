@@ -8,7 +8,14 @@ const { getAuth: getAdminAuth } = require('firebase-admin/auth');
 // as JSON text in FIREBASE_SERVICE_ACCOUNT_JSON. Locally, GOOGLE_APPLICATION_CREDENTIALS works.
 if (!getApps().length) {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) });
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+
+    // Convert literal '\n' characters in the private key into actual linebreaks
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+
+    initializeApp({ credential: cert(serviceAccount) });
   } else {
     initializeApp();
   }
