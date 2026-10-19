@@ -111,7 +111,7 @@ const Payments = {
     const host = window.location.hostname;
     const notPublic = host === 'localhost' || host === '127.0.0.1';
     const origin = (notPublic && CONFIG.publicAppUrl ? CONFIG.publicAppUrl : window.location.origin).replace(/\/$/, '');
-    const path = notPublic ? '/orders.html' : window.location.pathname;
+    const path = notPublic ? '/pages/orders.html' : window.location.pathname;
     return origin + path + '?id=' + encodeURIComponent(orderId) + '&pm=return';
   },
 

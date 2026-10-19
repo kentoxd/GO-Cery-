@@ -23,6 +23,9 @@
       ".env",
       ".env.*"
     ],
+    "rewrites": [
+      { "source": "/orders.html", "destination": "/pages/orders.html" }
+    ],
     "headers": [
       {
         "source": "**/*.html",
