@@ -85,7 +85,7 @@ const Payments = {
     });
     if (!method.ok) return { success: false, error: method.message };
 
-    const returnUrl = window.location.origin + window.location.pathname + '?id=' + encodeURIComponent(orderId) + '&pm=return';
+    const returnUrl = this._paymentReturnUrl(orderId);
     const attached = await this._paymongo('/payment_intents/' + info.paymentIntentId + '/attach', info.publicKey, {
       payment_method: method.data.id, client_key: info.clientKey, return_url: returnUrl
     });
@@ -103,8 +103,16 @@ const Payments = {
 
   /** GCash: returns { success, data: { redirectUrl } }. The customer approves the payment on PayMongo's page. */
   startEwallet(orderId) {
-    const returnUrl = window.location.origin + window.location.pathname + '?id=' + encodeURIComponent(orderId) + '&pm=return';
+    const returnUrl = this._paymentReturnUrl(orderId);
     return this._server('POST', '/api/payments/ewallet', { orderId, returnUrl });
+  },
+
+  _paymentReturnUrl(orderId) {
+    const host = window.location.hostname;
+    const notPublic = host === 'localhost' || host === '127.0.0.1';
+    const origin = (notPublic && CONFIG.publicAppUrl ? CONFIG.publicAppUrl : window.location.origin).replace(/\/$/, '');
+    const path = notPublic ? '/orders.html' : window.location.pathname;
+    return origin + path + '?id=' + encodeURIComponent(orderId) + '&pm=return';
   },
 
   startQr(orderId) {

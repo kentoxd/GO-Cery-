@@ -303,7 +303,7 @@ App.ready().then(async () => {
 
     bindReceiptPanel();
     if (needsPayment) renderPayPanel(order);
-    if (isOnline && params.pm === 'return') handleCardReturn(order);
+    if (isOnline && (params.pm === 'return' || params.payment_intent_id)) handleCardReturn(order);
 
     DOM.$('#cancel-order-btn')?.addEventListener('click', async () => {
       if (!confirm('Cancel this order? This cannot be undone.')) return;

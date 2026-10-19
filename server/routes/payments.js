@@ -130,6 +130,27 @@ router.post('/ewallet', verifyToken, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid return address.' });
     }
 
+    const returnUrl = String(req.body.returnUrl);
+    // PayMongo stores return_url on the intent at attach time. Reusing an old
+    // awaiting_next_action intent (e.g. one created on localhost) sends the
+    // customer to a dead URL after they authorize payment.
+    if (ctx.order.paymongoPaymentIntentId) {
+      const existing = await paymongo.getPaymentIntent(ctx.order.paymongoPaymentIntentId);
+      const status = existing.attributes.status;
+      if (status === 'succeeded') {
+        await markOrderPaid(ctx.orderRef, existing.attributes.payments && existing.attributes.payments[0] && existing.attributes.payments[0].id);
+        const err = new Error('Order already paid'); err.status = 400; throw err;
+      }
+      if (status === 'awaiting_next_action' || status === 'awaiting_payment_method') {
+        const sameReturn = ctx.order.paymongoReturnUrl === returnUrl;
+        if (!sameReturn || status === 'awaiting_next_action') {
+          try { await paymongo.cancelPaymentIntent(existing.id); } catch (e) { /* already closed */ }
+          await ctx.orderRef.update({ paymongoPaymentIntentId: null, paymongoReturnUrl: null });
+          ctx.order.paymongoPaymentIntentId = null;
+        }
+      }
+    }
+
     const intent = await getOrCreateIntent(ctx);
     let action = intent.attributes.next_action;
     if (!action || !action.redirect) {
@@ -137,8 +158,9 @@ router.post('/ewallet', verifyToken, async (req, res) => {
         type: ctx.method, // 'gcash' or 'paymaya' (Maya)
         billing: { name: ctx.order.userName || 'Go! Cery customer', email: req.user.email || 'customer@gocery.ph' }
       });
-      const attached = await paymongo.attachPaymentMethod(intent.id, pm.id, req.body.returnUrl);
+      const attached = await paymongo.attachPaymentMethod(intent.id, pm.id, returnUrl);
       action = attached.attributes.next_action;
+      await ctx.orderRef.update({ paymongoReturnUrl: returnUrl });
     }
     if (!action || !action.redirect || !action.redirect.url) {
       return res.status(502).json({ success: false, error: 'PayMongo did not return a payment link. This e-wallet may not be enabled for your PayMongo account.' });

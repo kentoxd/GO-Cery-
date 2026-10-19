@@ -7,7 +7,6 @@
  * Format.currency() does NOT divide by 100).
  */
 
-apiBaseUrl: 'https://go-cery.onrender.com',
 module.exports = {
   deliveryZones: [
     { id: 'metro-manila', name: 'Metro Manila (NCR)', fee: 99 },

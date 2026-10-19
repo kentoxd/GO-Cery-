@@ -70,6 +70,10 @@ function attachPaymentMethod(intentId, paymentMethodId, returnUrl) {
   return call('POST', '/payment_intents/' + intentId + '/attach', attributes);
 }
 
+function cancelPaymentIntent(id) {
+  return call('POST', '/payment_intents/' + id + '/cancel');
+}
+
 /** Finds a key anywhere inside an object (PayMongo puts QR test links in different places). */
 function findKey(obj, wanted) {
   if (!obj || typeof obj !== 'object') return null;
@@ -112,5 +116,5 @@ function verifyWebhookSignature(rawBody, signatureHeader) {
 
 module.exports = {
   createPaymentIntent, getPaymentIntent, createPaymentMethod, attachPaymentMethod,
-  verifyWebhookSignature, findKey, getPublicKey, getMode
+  cancelPaymentIntent, verifyWebhookSignature, findKey, getPublicKey, getMode
 };

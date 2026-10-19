@@ -79,6 +79,7 @@ const CONFIG = {
   // Address of the Go! Cery payment server (server/ folder), for example 'https://gocery-api.onrender.com'.
   // Leave empty to hide the online payment methods. See PAYMENTS.md.
   apiBaseUrl: 'https://go-cery.onrender.com',
+  publicAppUrl: 'https://go--cery.firebaseapp.com',
   loyaltyTiers: [
     { id: 'regular', name: 'Regular Suki', minPoints: 0, perks: ['Earn 1 point per ₱100'] },
     { id: 'vip', name: 'VIP Suki', minPoints: 500, perks: ['Free delivery on orders ₱2,000+', '2x points'] },
