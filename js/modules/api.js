@@ -377,6 +377,7 @@ const API = {
           id: ref.id,
           userId: user.id,
           userName: userData.name || userData.email,
+          userEmail: userData.email || user.email || '',
           items: pricing.items,
           productIds: [...new Set(pricing.items.map(i => i.productId))],
           subtotal: pricing.subtotal,
@@ -390,7 +391,7 @@ const API = {
           deliverySlot: slot.label,
           paymentMethod,
           status: 'Pending',
-          paymentStatus: isCod ? 'pending_collection' : 'awaiting_manual_verification',
+          paymentStatus: isCod ? 'pending_collection' : (CONFIG.onlinePaymentMethods.includes(paymentMethod) ? 'awaiting_payment' : 'awaiting_manual_verification'),
           inventoryDeducted: false,
           statusHistory: [{ status: 'Pending', timestamp: new Date().toISOString() }],
           createdAt: new Date().toISOString()
@@ -398,6 +399,7 @@ const API = {
 
         await ref.set(order);
         API._clearCache();
+        if (typeof Mailer !== 'undefined') Mailer.sendOrderStatus(order, 'Pending');
         API._emit('order:created', order);
         return { success: true, data: order };
       } catch (err) {
@@ -443,6 +445,7 @@ const API = {
       if (data.inventoryDeducted) {
         await API.inventory.restore(data.items || []);
       }
+      if (typeof Mailer !== 'undefined') Mailer.sendOrderStatus({ ...data, id, status: 'Cancelled' }, 'Cancelled', 'Cancelled by customer');
       return { success: true, data: { ...data, id, status: 'Cancelled', statusHistory } };
     },
 
@@ -472,6 +475,8 @@ const API = {
 
       await ref.update(updates);
       const updated = { id, ...data, ...updates };
+      // Tell the customer by email, but only when the status really changed.
+      if (data.status !== status && typeof Mailer !== 'undefined') Mailer.sendOrderStatus(updated, status, note);
       API._emit('order:updated', updated);
       return { success: true, data: updated };
     },
@@ -553,6 +558,9 @@ const API = {
         await ref.update({ inventoryDeducted: true });
       }
       await API.loyalty.earnPoints(order.userId, order.total);
+      if (order.status !== 'Confirmed' && typeof Mailer !== 'undefined') {
+        Mailer.sendOrderStatus({ ...order, id, status: 'Confirmed', paymentStatus: 'paid' }, 'Confirmed', 'Payment confirmed');
+      }
 
       await API.admin.logAction('CONFIRM_MANUAL_PAYMENT', {
         orderId: id,

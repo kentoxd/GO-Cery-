@@ -1,0 +1,28 @@
+# Render blueprint: deploys the Go! Cery payment server (server/ folder) as a free web service.
+services:
+  - type: web
+    name: gocery-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: sk_test_mzmpc1BBCak25pA2ZtDzp4Wb
+        sync: false
+      - key: pk_test_NRaY35r6zCeeXmVwAZini1yW
+        sync: false
+      - key: whsk_woyDRPQszWC8KaRuREjTe9po
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: EMAILJS_SERVICE_ID
+        sync: false
+      - key: EMAILJS_ORDER_TEMPLATE_ID
+        sync: false
+      - key: EMAILJS_PUBLIC_KEY
+        sync: false
+      - key: EMAILJS_PRIVATE_KEY
+        sync: false

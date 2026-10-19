@@ -1389,3 +1389,9 @@
 .re-paste__msg { margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-primary-dark); }
 .re-warnings { margin: 1rem 0 0; padding: 0.8rem 1rem; background: #fff7ed; border: 2px solid var(--color-accent-dark); border-radius: 8px; }
 .re-warnings ul { margin: 0.4rem 0 0.4rem 1.2rem; }
+
+/* ---- Online payment panel ---- */
+.pay-panel { border: 2px solid var(--color-primary); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; background: #f6fbf8; }
+.pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.pay-test-note { background: #fff7ed; border: 1px solid var(--color-accent-dark); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.85rem; margin: 0.5rem 0 1rem; }
+.pay-secure { display: block; margin-top: 0.6rem; color: var(--color-text-muted); }

@@ -7,6 +7,12 @@ App.ready().then(async () => {
     return;
   }
 
+  const returnParams = DOM.getQueryParams();
+  if (returnParams.id && returnParams.pm === 'return') {
+    window.location.replace('orders.html?id=' + encodeURIComponent(returnParams.id) + '&pm=return');
+    return;
+  }
+
   const fullCart = await API.cart.getEnriched(user.id);
 
   // Only pay for the items picked on the cart page (all items if nothing was picked).
@@ -38,7 +44,22 @@ App.ready().then(async () => {
   // Returning customers: start from the address and payment method they used last time.
   const lastPick = Storage.get('gocery_last_checkout', {}) || {};
   const rememberedAddress = (user.addresses || []).some(a => a.id === lastPick.addressId) ? lastPick.addressId : null;
-  const rememberedPayment = CONFIG.paymentMethods.some(m => m.id === lastPick.paymentMethod) ? lastPick.paymentMethod : 'cod';
+  const paymentsOnline = typeof Payments !== 'undefined' && Payments.enabled();
+  const availableMethods = CONFIG.paymentMethods.filter(m => {
+    if (m.online && !CONFIG.apiBaseUrl) return false;
+    // When PayMongo is configured, use GCash/Maya (Online) instead of manual merchant QR codes.
+    if (paymentsOnline && (m.id === 'gcash' || m.id === 'maya')) return false;
+    return true;
+  });
+  function normalizePaymentId(id) {
+    if (!paymentsOnline) return id;
+    if (id === 'gcash') return 'gcash_online';
+    if (id === 'maya') return 'maya_online';
+    return id;
+  }
+  const rememberedPayment = availableMethods.some(m => m.id === normalizePaymentId(lastPick.paymentMethod))
+    ? normalizePaymentId(lastPick.paymentMethod)
+    : 'cod';
   let checkoutData = {
     addressId: rememberedAddress || user.addresses?.[0]?.id || null,
     zoneId: CONFIG.deliveryZones[0].id,
@@ -51,14 +72,212 @@ App.ready().then(async () => {
   };
 
   function renderSteps() {
-    const steps = ['Address', 'Delivery', 'Payment', 'Review'];
-    DOM.$('#checkout-steps').innerHTML = steps.map((s, i) =>
-      `<div class="checkout-step ${i + 1 === step ? 'active' : ''} ${i + 1 < step ? 'done' : ''}" ${i + 1 === step ? 'aria-current="step"' : ''}>${i + 1 < step ? '✓' : i + 1}. ${s}</div>`
-    ).join('');
+    const steps = step === 5
+      ? ['Address', 'Delivery', 'Payment', 'Review', 'Pay']
+      : ['Address', 'Delivery', 'Payment', 'Review'];
+    DOM.$('#checkout-steps').innerHTML = steps.map((s, i) => {
+      const n = i + 1;
+      const isDone = n < step || (step === 5 && n < 5);
+      const isActive = n === step;
+      return `<div class="checkout-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}" ${isActive ? 'aria-current="step"' : ''}>${isDone ? '✓' : n}. ${s}</div>`;
+    }).join('');
   }
 
   function isManualQrPayment(method) {
     return method === 'gcash' || method === 'maya';
+  }
+
+  function isOnlinePaymentMethod(methodId) {
+    const entry = CONFIG.paymentMethods.find(m => m.id === methodId);
+    return !!(entry && entry.online);
+  }
+
+  /** PayMongo UI after the order is saved (same flows as orders.js). */
+  let payPolling = false;
+
+  function showOnlinePayPanel(order) {
+    step = 5;
+    renderSteps();
+    const panel = DOM.$('#checkout-panel');
+    if (!paymentsOnline) {
+      panel.innerHTML = `
+        <h3>Complete payment</h3>
+        <p class="form-error">Online payment is not available right now. Open your order to try again or contact the seller.</p>
+        <a href="orders.html?id=${DOM.escapeHtml(order.id)}" class="btn btn--primary">View My Order</a>`;
+      return;
+    }
+
+    const failed = order.paymentStatus === 'failed'
+      ? `<p class="form-error" role="alert">Your last payment did not go through${order.paymentFailureReason ? ': ' + DOM.escapeHtml(order.paymentFailureReason) : ''}. You can try again.</p>`
+      : '';
+
+    panel.innerHTML = `
+      <h3>Complete payment</h3>
+      <p class="receipt-panel__alert" role="alert">Pay ${Format.currency(order.total)} to confirm order ${DOM.escapeHtml(order.id)}.</p>
+      ${failed}
+      <div id="pay-body"></div>
+      <p class="form-error" id="pay-error" role="alert"></p>
+      <p style="margin-top:1rem"><a href="orders.html?id=${DOM.escapeHtml(order.id)}" class="btn btn--outline btn--sm">View order details</a></p>`;
+
+    if (order.paymentMethod === 'QR Ph') renderCheckoutQrPanel(order);
+    else if (order.paymentMethod === 'GCash (Online)' || order.paymentMethod === 'Maya (Online)') renderCheckoutEwalletPanel(order);
+    else renderCheckoutCardPanel(order);
+  }
+
+  async function renderCheckoutCardPanel(o) {
+    const cfg = await Payments.getConfig();
+    DOM.$('#pay-body').innerHTML = `
+      <h3 style="margin:0.5rem 0">Pay with card</h3>
+      ${cfg.mode === 'test' ? '<p class="pay-test-note">Test mode: use card 4343 4343 4343 4345, any future expiry date, and any 3-digit CVC. For a 3D Secure test, use 4120 0000 0000 0007. No real money is charged.</p>' : ''}
+      <div class="form-group"><label for="card-name">Name on card</label><input id="card-name" autocomplete="cc-name" value="${DOM.escapeHtml(user.name || '')}"></div>
+      <div class="form-group"><label for="card-number">Card number</label><input id="card-number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="4343 4343 4343 4345"></div>
+      <div class="pay-row">
+        <div class="form-group"><label for="card-expiry">Expiry (MM/YY)</label><input id="card-expiry" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="12/30"></div>
+        <div class="form-group"><label for="card-cvc">CVC</label><input id="card-cvc" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123"></div>
+      </div>
+      <button class="btn btn--primary" id="card-pay-btn">Pay ${Format.currency(o.total)}</button>
+      <small class="pay-secure">Your card details are sent directly to PayMongo and are never stored on our servers.</small>`;
+
+    DOM.$('#card-number').addEventListener('input', e => {
+      const digits = e.target.value.replace(/\D/g, '').slice(0, 19);
+      e.target.value = digits.replace(/(.{4})/g, '$1 ').trim();
+    });
+    DOM.$('#card-expiry').addEventListener('input', e => {
+      const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+      e.target.value = digits.length > 2 ? digits.slice(0, 2) + '/' + digits.slice(2) : digits;
+    });
+
+    DOM.$('#card-pay-btn').addEventListener('click', async () => {
+      const btn = DOM.$('#card-pay-btn');
+      const errorEl = DOM.$('#pay-error');
+      errorEl.textContent = '';
+      const card = {
+        name: DOM.$('#card-name').value.trim(),
+        number: DOM.$('#card-number').value,
+        expiry: DOM.$('#card-expiry').value,
+        cvc: DOM.$('#card-cvc').value.trim()
+      };
+      if (!card.name || card.number.replace(/\D/g, '').length < 13 || !card.expiry || card.cvc.length < 3) {
+        errorEl.textContent = 'Please fill in the name, card number, expiry date, and CVC.';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Processing…';
+      const result = await Payments.payWithCard(o.id, card, user.email);
+      DOM.$('#card-number').value = '';
+      DOM.$('#card-cvc').value = '';
+      if (!result.success) {
+        errorEl.textContent = result.error;
+        btn.disabled = false;
+        btn.textContent = 'Pay ' + Format.currency(o.total);
+        return;
+      }
+      if (result.status === 'redirect') {
+        btn.textContent = 'Opening your bank…';
+        window.location.href = result.redirectUrl;
+        return;
+      }
+      await waitForCheckoutPayment(o.id, 8);
+    });
+  }
+
+  async function renderCheckoutEwalletPanel(o) {
+    const wallet = o.paymentMethod === 'Maya (Online)' ? 'Maya' : 'GCash';
+    const cfg = await Payments.getConfig();
+    DOM.$('#pay-body').innerHTML = `
+      <h3 style="margin:0.5rem 0">Pay with ${wallet}</h3>
+      <p style="color:var(--color-text-muted)">You will be taken to PayMongo to approve the payment in your ${wallet} account, then brought back here.</p>
+      ${cfg.mode === 'test' ? '<p class="pay-test-note">Test mode: PayMongo will show a test page. Choose <strong>Authorize</strong> to simulate a successful payment, or <strong>Fail</strong> to simulate a failed one. No real money is charged.</p>' : ''}
+      <button class="btn btn--primary" id="ewallet-pay-btn">Pay ${Format.currency(o.total)} with ${wallet}</button>`;
+    DOM.$('#ewallet-pay-btn').addEventListener('click', async () => {
+      const btn = DOM.$('#ewallet-pay-btn');
+      const errorEl = DOM.$('#pay-error');
+      errorEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Opening ' + wallet + '…';
+      try {
+        const result = await Payments.startEwallet(o.id);
+        if (!result.success) {
+          errorEl.textContent = result.error || 'Could not start payment. Please try again.';
+          btn.disabled = false;
+          btn.textContent = 'Pay ' + Format.currency(o.total) + ' with ' + wallet;
+          return;
+        }
+        if (!result.data?.redirectUrl) {
+          errorEl.textContent = 'Payment server did not return a redirect URL.';
+          btn.disabled = false;
+          btn.textContent = 'Pay ' + Format.currency(o.total) + ' with ' + wallet;
+          return;
+        }
+        window.location.href = result.data.redirectUrl;
+      } catch (err) {
+        console.error('E-wallet payment failed:', err);
+        errorEl.textContent = err.message || 'Payment failed. Please try again.';
+        btn.disabled = false;
+        btn.textContent = 'Pay ' + Format.currency(o.total) + ' with ' + wallet;
+      }
+    });
+  }
+
+  function renderCheckoutQrPanel(o) {
+    DOM.$('#pay-body').innerHTML = `
+      <h3 style="margin:0.5rem 0">Pay with QR Ph</h3>
+      <p style="color:var(--color-text-muted)">Works with GCash, Maya, GoTyme, and most banking apps.</p>
+      <button class="btn btn--primary" id="qr-start-btn">Show my QR code</button>
+      <div id="qr-box"></div>`;
+    DOM.$('#qr-start-btn').addEventListener('click', async () => {
+      const btn = DOM.$('#qr-start-btn');
+      const errorEl = DOM.$('#pay-error');
+      errorEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Creating QR code…';
+      try {
+        const result = await Payments.startQr(o.id);
+        btn.disabled = false;
+        btn.textContent = 'Show a new QR code';
+        if (!result.success) {
+          errorEl.textContent = result.error || 'Could not create QR code.';
+          return;
+        }
+        DOM.$('#qr-box').innerHTML = `
+          <div style="text-align:center;margin:1rem 0">
+            <img class="qr-image" src="${result.data.imageUrl}" alt="QR Ph code for ${Format.currency(o.total)}" style="margin:0 auto">
+            <p><strong>${Format.currency(o.total)}</strong></p>
+            <p style="color:var(--color-text-muted);font-size:0.85rem">Scan it in your banking or e-wallet app. This code works once and expires in ${result.data.expiresInMinutes} minutes.</p>
+            <p id="qr-wait" style="font-size:0.85rem">Waiting for your payment…</p>
+          </div>
+          ${result.data.testUrl ? `<p class="pay-test-note">Test mode: do not scan this code with a real app. Use <a href="${DOM.escapeHtml(result.data.testUrl)}" target="_blank" rel="noopener">this PayMongo link</a> to simulate the payment instead.</p>` : ''}`;
+        waitForCheckoutPayment(o.id, 450, true);
+      } catch (err) {
+        console.error('QR payment failed:', err);
+        btn.disabled = false;
+        btn.textContent = 'Show my QR code';
+        errorEl.textContent = err.message || 'Could not create QR code.';
+      }
+    });
+  }
+
+  async function waitForCheckoutPayment(orderId, tries, quiet) {
+    if (payPolling) return;
+    payPolling = true;
+    const errorEl = DOM.$('#pay-error');
+    for (let i = 0; i < tries; i++) {
+      const result = await Payments.verify(orderId);
+      if (result.success && result.data.paymentStatus === 'paid') {
+        payPolling = false;
+        Components.toast('Payment received. Thank you!');
+        window.location.href = 'orders.html?id=' + orderId + '&success=1';
+        return;
+      }
+      if (result.success && result.data.paymentStatus === 'failed') {
+        payPolling = false;
+        if (errorEl) errorEl.textContent = result.data.message || 'The payment did not go through.';
+        return;
+      }
+      await new Promise(r => setTimeout(r, quiet ? 4000 : 2000));
+    }
+    payPolling = false;
+    if (errorEl && !quiet) errorEl.textContent = 'We are still waiting for the bank to confirm. Refresh this page or open your order to check again.';
   }
 
   async function renderPanel() {
@@ -271,13 +490,15 @@ App.ready().then(async () => {
     if (step === 3) {
       panel.innerHTML = `
         <h3>Payment Method</h3>
-        <div class="payment-options">${CONFIG.paymentMethods.map(m =>
+        <div class="payment-options">${availableMethods.map(m =>
           `<label class="payment-option">
             <input type="radio" name="payment" value="${m.id}" ${checkoutData.paymentMethod === m.id ? 'checked' : ''}>
             ${m.icon} ${m.name}
           </label>`
         ).join('')}</div>
-        <p style="color:var(--color-text-muted);font-size:0.9rem;margin-top:0.5rem">GCash and Maya payments are verified manually by the seller after you scan their QR code.</p>
+        <p style="color:var(--color-text-muted);font-size:0.9rem;margin-top:0.5rem">${paymentsOnline
+          ? 'Card and GCash/Maya (Online) are processed securely through PayMongo after you review and place your order.'
+          : 'GCash and Maya payments are verified manually by the seller after you scan their QR code. Set <code>apiBaseUrl</code> in config to enable online PayMongo checkout.'}</p>
         <div class="form-group" style="margin-top:1rem"><label>Promo Code</label>
           <div style="display:flex;gap:0.5rem"><input id="promo-input" placeholder="Enter code"><button class="btn btn--outline btn--sm" id="apply-promo">Apply</button></div>
         </div>
@@ -349,6 +570,12 @@ App.ready().then(async () => {
             errorEl.textContent = order.error || 'Could not create order.';
             btn.disabled = false;
             btn.textContent = 'Place Order';
+            return;
+          }
+
+          if (isOnlinePaymentMethod(checkoutData.paymentMethod)) {
+            await removePaidItems();
+            showOnlinePayPanel(order.data);
             return;
           }
 

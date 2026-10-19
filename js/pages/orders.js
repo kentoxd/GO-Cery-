@@ -7,6 +7,8 @@ App.ready().then(async () => {
   function paymentLabel(o) {
     if (o.status === 'Cancelled') return 'Cancelled';
     if (o.paymentStatus === 'paid') return 'Paid';
+    if (o.paymentStatus === 'awaiting_payment') return 'Waiting for your payment';
+    if (o.paymentStatus === 'failed') return 'Payment failed, you can try again';
     if (o.paymentStatus === 'awaiting_manual_verification') return o.receiptUrl ? 'Receipt received, awaiting verification' : 'Upload your receipt to continue';
     return 'Pay on delivery';
   }
@@ -43,7 +45,168 @@ App.ready().then(async () => {
     const qrCodes = isManualQr ? await API.cms.getPaymentQrCodes() : null;
     const qrUrl = qrCodes ? (order.paymentMethod === 'GCash' ? qrCodes.gcashQrUrl : qrCodes.mayaQrUrl) : '';
 
+    const isOnline = CONFIG.onlinePaymentMethods.includes(order.paymentMethod);
+    const needsPayment = isOnline && order.paymentStatus !== 'paid' && !['Cancelled', 'Refunded'].includes(order.status);
     const needsReceipt = isManualQr && order.paymentStatus !== 'paid' && !['Cancelled', 'Refunded'].includes(order.status);
+
+    // ---------- online payment (PayMongo): card and QR Ph ----------
+    function renderPayPanel(o) {
+      const panel = DOM.$('#pay-panel');
+      if (!Payments.enabled()) {
+        panel.innerHTML = '<p class="form-error">Online payment is not available right now. Please contact the seller.</p>';
+        return;
+      }
+      const failed = o.paymentStatus === 'failed'
+        ? `<p class="form-error" role="alert">Your last payment did not go through${o.paymentFailureReason ? ': ' + DOM.escapeHtml(o.paymentFailureReason) : ''}. You can try again.</p>` : '';
+      panel.innerHTML = `
+        <p class="receipt-panel__alert" role="alert">Action needed: pay ${Format.currency(o.total)} to confirm this order.</p>
+        ${failed}
+        <div id="pay-body"></div>
+        <p class="form-error" id="pay-error" role="alert"></p>`;
+      if (o.paymentMethod === 'QR Ph') renderQrPanel(o);
+      else if (o.paymentMethod === 'GCash (Online)' || o.paymentMethod === 'Maya (Online)') renderEwalletPanel(o);
+      else renderCardPanel(o);
+    }
+
+    async function renderCardPanel(o) {
+      const cfg = await Payments.getConfig();
+      DOM.$('#pay-body').innerHTML = `
+        <h3 style="margin:0.5rem 0">Pay with card</h3>
+        ${cfg.mode === 'test' ? '<p class="pay-test-note">Test mode: use card 4343 4343 4343 4345, any future expiry date, and any 3-digit CVC. For a 3D Secure test, use 4120 0000 0000 0007. No real money is charged.</p>' : ''}
+        <div class="form-group"><label for="card-name">Name on card</label><input id="card-name" autocomplete="cc-name" value="${DOM.escapeHtml(user.name || '')}"></div>
+        <div class="form-group"><label for="card-number">Card number</label><input id="card-number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="4343 4343 4343 4345"></div>
+        <div class="pay-row">
+          <div class="form-group"><label for="card-expiry">Expiry (MM/YY)</label><input id="card-expiry" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="12/30"></div>
+          <div class="form-group"><label for="card-cvc">CVC</label><input id="card-cvc" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123"></div>
+        </div>
+        <button class="btn btn--primary" id="card-pay-btn">Pay ${Format.currency(o.total)}</button>
+        <small class="pay-secure">Your card details are sent directly to PayMongo and are never stored on our servers.</small>`;
+
+      DOM.$('#card-number').addEventListener('input', e => {
+        const digits = e.target.value.replace(/\D/g, '').slice(0, 19);
+        e.target.value = digits.replace(/(.{4})/g, '$1 ').trim();
+      });
+      DOM.$('#card-expiry').addEventListener('input', e => {
+        const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+        e.target.value = digits.length > 2 ? digits.slice(0, 2) + '/' + digits.slice(2) : digits;
+      });
+
+      DOM.$('#card-pay-btn').addEventListener('click', async () => {
+        const btn = DOM.$('#card-pay-btn');
+        const errorEl = DOM.$('#pay-error');
+        errorEl.textContent = '';
+        const card = {
+          name: DOM.$('#card-name').value.trim(),
+          number: DOM.$('#card-number').value,
+          expiry: DOM.$('#card-expiry').value,
+          cvc: DOM.$('#card-cvc').value.trim()
+        };
+        if (!card.name || card.number.replace(/\D/g, '').length < 13 || !card.expiry || card.cvc.length < 3) {
+          errorEl.textContent = 'Please fill in the name, card number, expiry date, and CVC.';
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Processing…';
+        const result = await Payments.payWithCard(o.id, card, user.email);
+        DOM.$('#card-number').value = '';
+        DOM.$('#card-cvc').value = '';
+        if (!result.success) {
+          errorEl.textContent = result.error;
+          btn.disabled = false;
+          btn.textContent = 'Pay ' + Format.currency(o.total);
+          return;
+        }
+        if (result.status === 'redirect') {
+          btn.textContent = 'Opening your bank…';
+          window.location.href = result.redirectUrl;
+          return;
+        }
+        await waitForPayment(o.id, 8);
+      });
+    }
+
+    async function renderEwalletPanel(o) {
+      const wallet = o.paymentMethod === 'Maya (Online)' ? 'Maya' : 'GCash';
+      const cfg = await Payments.getConfig();
+      DOM.$('#pay-body').innerHTML = `
+        <h3 style="margin:0.5rem 0">Pay with ${wallet}</h3>
+        <p style="color:var(--color-text-muted)">You will be taken to PayMongo to approve the payment in your ${wallet} account, then brought back here.</p>
+        ${cfg.mode === 'test' ? '<p class="pay-test-note">Test mode: PayMongo will show a test page. Choose <strong>Authorize</strong> to simulate a successful payment, or <strong>Fail</strong> to simulate a failed one. No real money is charged.</p>' : ''}
+        <button class="btn btn--primary" id="gcash-pay-btn">Pay ${Format.currency(o.total)} with ${wallet}</button>`;
+      DOM.$('#gcash-pay-btn').addEventListener('click', async () => {
+        const btn = DOM.$('#gcash-pay-btn');
+        const errorEl = DOM.$('#pay-error');
+        errorEl.textContent = '';
+        btn.disabled = true;
+        btn.textContent = 'Opening ' + wallet + '…';
+        const result = await Payments.startEwallet(o.id);
+        if (!result.success) {
+          errorEl.textContent = result.error;
+          btn.disabled = false;
+          btn.textContent = 'Pay ' + Format.currency(o.total) + ' with ' + wallet;
+          return;
+        }
+        window.location.href = result.data.redirectUrl;
+      });
+    }
+
+    function renderQrPanel(o) {
+      DOM.$('#pay-body').innerHTML = `
+        <h3 style="margin:0.5rem 0">Pay with QR Ph</h3>
+        <p style="color:var(--color-text-muted)">Works with GCash, Maya, GoTyme, and most banking apps.</p>
+        <button class="btn btn--primary" id="qr-start-btn">Show my QR code</button>
+        <div id="qr-box"></div>`;
+      DOM.$('#qr-start-btn').addEventListener('click', async () => {
+        const btn = DOM.$('#qr-start-btn');
+        const errorEl = DOM.$('#pay-error');
+        errorEl.textContent = '';
+        btn.disabled = true;
+        btn.textContent = 'Creating QR code…';
+        const result = await Payments.startQr(o.id);
+        btn.disabled = false;
+        btn.textContent = 'Show a new QR code';
+        if (!result.success) { errorEl.textContent = result.error; return; }
+        DOM.$('#qr-box').innerHTML = `
+          <div style="text-align:center;margin:1rem 0">
+            <img class="qr-image" src="${result.data.imageUrl}" alt="QR Ph code for ${Format.currency(o.total)}" style="margin:0 auto">
+            <p><strong>${Format.currency(o.total)}</strong></p>
+            <p style="color:var(--color-text-muted);font-size:0.85rem">Scan it in your banking or e-wallet app. This code works once and expires in ${result.data.expiresInMinutes} minutes.</p>
+            <p id="qr-wait" style="font-size:0.85rem">Waiting for your payment…</p>
+          </div>
+          ${result.data.testUrl ? `<p class="pay-test-note">Test mode: do not scan this code with a real app. Use <a href="${DOM.escapeHtml(result.data.testUrl)}" target="_blank" rel="noopener">this PayMongo link</a> to simulate the payment instead.</p>` : ''}`;
+        waitForPayment(o.id, 450, true);
+      });
+    }
+
+    // Asks the server every few seconds whether PayMongo has marked the payment as paid.
+    let polling = false;
+    async function waitForPayment(orderId, tries, quiet) {
+      if (polling) return;
+      polling = true;
+      for (let i = 0; i < tries; i++) {
+        const result = await Payments.verify(orderId);
+        if (result.success && result.data.paymentStatus === 'paid') {
+          polling = false;
+          Components.toast('Payment received. Thank you!');
+          window.location.href = 'orders.html?id=' + orderId;
+          return;
+        }
+        if (result.success && result.data.paymentStatus === 'failed') {
+          polling = false;
+          DOM.$('#pay-error').textContent = result.data.message || 'The payment did not go through.';
+          return;
+        }
+        await new Promise(r => setTimeout(r, quiet ? 4000 : 2000));
+      }
+      polling = false;
+      if (!quiet) DOM.$('#pay-error').textContent = 'We are still waiting for the bank to confirm. Refresh this page in a moment.';
+    }
+
+    // Coming back from the 3D Secure page.
+    function handleCardReturn(o) {
+      history.replaceState(null, '', 'orders.html?id=' + o.id);
+      if (o.paymentStatus !== 'paid') waitForPayment(o.id, 8);
+    }
 
     function receiptPanelInnerHtml() {
       return `
@@ -110,6 +273,7 @@ App.ready().then(async () => {
           <span class="order-status order-status--${order.status.replace(/ /g, '\\ ')}">${order.status}</span>
         </div>
         <p class="order-status-msg">${statusMessages[order.status] || ''}</p>
+        ${needsPayment ? `<div class="pay-panel" id="pay-panel"></div>` : ''}
         ${needsReceipt ? `<div class="receipt-panel receipt-panel--top" id="receipt-panel">${receiptPanelInnerHtml()}</div>` : ''}
         <div class="order-track">
           ${CONFIG.orderStatuses.slice(0, 5).map((s, i) => `
@@ -138,6 +302,8 @@ App.ready().then(async () => {
       </div>`;
 
     bindReceiptPanel();
+    if (needsPayment) renderPayPanel(order);
+    if (isOnline && params.pm === 'return') handleCardReturn(order);
 
     DOM.$('#cancel-order-btn')?.addEventListener('click', async () => {
       if (!confirm('Cancel this order? This cannot be undone.')) return;

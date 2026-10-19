@@ -35,7 +35,7 @@ const CONFIG = {
     orders: 'gocery_orders',
     products: 'gocery_products',
     categories: 'gocery_categories',
-    inventory: 'gocery_inventory',  
+    inventory: 'gocery_inventory',
     reviews: 'gocery_reviews',
     loyalty: 'gocery_loyalty',
     cms: 'gocery_cms',
@@ -67,8 +67,18 @@ const CONFIG = {
   paymentMethods: [
     { id: 'cod', name: 'Cash on Delivery', icon: '💵' },
     { id: 'gcash', name: 'GCash', icon: '📱' },
-    { id: 'maya', name: 'Maya', icon: '💳' }
+    { id: 'maya', name: 'Maya', icon: '💳' },
+    // Paid online through PayMongo. Only shown when apiBaseUrl (above) is set.
+    { id: 'card', name: 'Credit / Debit Card', icon: '💳', online: true },
+    { id: 'gcash_online', name: 'GCash (Online)', icon: '📱', online: true },
+    { id: 'maya_online', name: 'Maya (Online)', icon: '💳', online: true }
+    // QR Ph is ready in the code but hidden until PayMongo enables it for your account.
+    // To turn it on, add: { id: 'qrph', name: 'QR Ph', icon: '🔳', online: true }
   ],
+  onlinePaymentMethods: ['Credit / Debit Card', 'GCash (Online)', 'Maya (Online)', 'QR Ph'],
+  // Address of the Go! Cery payment server (server/ folder), for example 'https://gocery-api.onrender.com'.
+  // Leave empty to hide the online payment methods. See PAYMENTS.md.
+  apiBaseUrl: 'https://go-cery.onrender.com',
   loyaltyTiers: [
     { id: 'regular', name: 'Regular Suki', minPoints: 0, perks: ['Earn 1 point per ₱100'] },
     { id: 'vip', name: 'VIP Suki', minPoints: 500, perks: ['Free delivery on orders ₱2,000+', '2x points'] },

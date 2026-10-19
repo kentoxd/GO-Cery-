@@ -76,7 +76,7 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'Pending'
         && request.resource.data.inventoryDeducted is bool
-        && request.resource.data.paymentStatus in ['pending_collection', 'awaiting_manual_verification']
+        && request.resource.data.paymentStatus in ['pending_collection', 'awaiting_manual_verification', 'awaiting_payment']
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0
         && request.resource.data.total is number

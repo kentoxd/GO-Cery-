@@ -6,6 +6,8 @@
  * All monetary values are in PESOS (matches this project's convention —
  * Format.currency() does NOT divide by 100).
  */
+
+apiBaseUrl: 'https://go-cery.onrender.com',
 module.exports = {
   deliveryZones: [
     { id: 'metro-manila', name: 'Metro Manila (NCR)', fee: 99 },
@@ -28,5 +30,17 @@ module.exports = {
   // that are manually verified by the admin rather than processed via
   // PayMongo — customer scans a static QR the admin uploaded, admin
   // confirms receipt later. No automated webhook will ever fire for these.
-  manualPaymentMethods: ['GCash', 'Maya']
+  manualPaymentMethods: ['GCash', 'Maya'],
+
+  // Payment method NAMES paid online through PayMongo -> the PayMongo method they use.
+  // The order's paymentMethod name decides which flow runs, never a value sent by the browser.
+  onlinePaymentMethods: { 'Credit / Debit Card': 'card', 'GCash (Online)': 'gcash', 'Maya (Online)': 'paymaya', 'QR Ph': 'qrph' },
+
+  // Websites and apps allowed to call this server (CORS) and to be used as a payment return address.
+  allowedOrigins: [
+    'http://localhost:5000', 'http://127.0.0.1:5000', 'http://localhost:4200', 'http://127.0.0.1:4200',
+    'https://go--cery.web.app', 'https://go--cery.firebaseapp.com',
+    // The Android app (Capacitor) runs from these origins.
+    'https://localhost', 'http://localhost', 'capacitor://localhost'
+  ].concat((process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean))
 };
