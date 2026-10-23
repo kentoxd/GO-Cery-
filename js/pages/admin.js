@@ -77,31 +77,36 @@ App.ready().then(async () => {
     </div>`;
   }
 
-  function bindTableSearch(inputId, tableId, emptyMessage, additionalMatch = () => true, maxVisibleInputId = null) {
+  function bindTableSearch(inputId, tableId, emptyMessage, additionalMatch = () => true, maxVisibleInputId = null, paginationId = null) {
     const input = DOM.$(`#${inputId}`);
     const table = DOM.$(`#${tableId}`);
     if (!input || !table) return () => {};
+    let currentPage = 1;
 
-    const applyFilter = () => {
+    const applyFilter = (resetPage = false) => {
+      if (resetPage) currentPage = 1;
       const query = input.value.trim().toLowerCase();
       const rows = DOM.$$('tbody tr', table);
       const maxVisibleInput = maxVisibleInputId ? DOM.$(`#${maxVisibleInputId}`) : null;
-      const maxVisible = maxVisibleInput && maxVisibleInput.value !== 'all'
-        ? Number(maxVisibleInput.value)
+      const pageSize = maxVisibleInput && maxVisibleInput.value !== 'all'
+        ? Math.max(1, Number(maxVisibleInput.value))
         : Infinity;
       const matchingRows = rows.filter(row =>
         !row.classList.contains('table-filter-empty')
         && (!query || row.textContent.toLowerCase().includes(query))
         && additionalMatch(row)
       );
-      let visibleRows = 0;
-      matchingRows.forEach((row, index) => {
-        row.hidden = index >= maxVisible;
-        if (!row.hidden) visibleRows++;
-      });
+      const totalPages = Number.isFinite(pageSize) ? Math.max(1, Math.ceil(matchingRows.length / pageSize)) : 1;
+      currentPage = Math.min(currentPage, totalPages);
+      const startIndex = Number.isFinite(pageSize) ? (currentPage - 1) * pageSize : 0;
+      const visibleRows = Number.isFinite(pageSize)
+        ? matchingRows.slice(startIndex, startIndex + pageSize)
+        : matchingRows;
+      rows.filter(row => !row.classList.contains('table-filter-empty')).forEach(row => { row.hidden = true; });
+      visibleRows.forEach(row => { row.hidden = false; });
 
       let emptyRow = table.querySelector('.table-filter-empty');
-      if (!visibleRows && rows.length) {
+      if (!matchingRows.length) {
         if (!emptyRow) {
           emptyRow = document.createElement('tr');
           emptyRow.className = 'table-filter-empty';
@@ -112,10 +117,31 @@ App.ready().then(async () => {
       } else if (emptyRow) {
         emptyRow.hidden = true;
       }
+
+      const pagination = paginationId ? DOM.$(`#${paginationId}`) : null;
+      if (pagination) {
+        const firstResult = matchingRows.length ? startIndex + 1 : 0;
+        const lastResult = matchingRows.length ? startIndex + visibleRows.length : 0;
+        pagination.innerHTML = `
+          <span class="admin-pagination__summary">Showing ${firstResult}–${lastResult} of ${matchingRows.length}</span>
+          <div class="admin-pagination__controls">
+            <button class="btn btn--outline btn--sm" type="button" data-page="previous" ${currentPage <= 1 ? 'disabled' : ''}>Previous</button>
+            <span aria-live="polite">Page ${currentPage} of ${totalPages}</span>
+            <button class="btn btn--outline btn--sm" type="button" data-page="next" ${currentPage >= totalPages ? 'disabled' : ''}>Next</button>
+          </div>`;
+        pagination.querySelector('[data-page="previous"]')?.addEventListener('click', () => {
+          currentPage--;
+          applyFilter();
+        });
+        pagination.querySelector('[data-page="next"]')?.addEventListener('click', () => {
+          currentPage++;
+          applyFilter();
+        });
+      }
     };
 
-    input.addEventListener('input', applyFilter);
-    if (maxVisibleInputId) DOM.$(`#${maxVisibleInputId}`)?.addEventListener('change', applyFilter);
+    input.addEventListener('input', () => applyFilter(true));
+    if (maxVisibleInputId) DOM.$(`#${maxVisibleInputId}`)?.addEventListener('change', () => applyFilter(true));
     return applyFilter;
   }
 
@@ -276,6 +302,7 @@ App.ready().then(async () => {
         <button class="btn btn--outline btn--sm" id="orders-filter-clear" type="button">Clear</button>
       </div>
       ${renderOrdersTable(orders, false, 'orders-table')}
+      <div id="orders-pagination" class="admin-pagination"></div>
       <div id="order-detail" style="margin-top:1.5rem"></div>`);
     const applyOrderFilter = bindTableSearch('orders-search', 'orders-table', 'No orders match your filters.', row => {
       const status = DOM.$('#orders-status-filter').value;
@@ -288,22 +315,22 @@ App.ready().then(async () => {
       if (toVal && (!created || created > new Date(toVal + 'T23:59:59'))) return false;
 
       return true;
-    }, 'orders-show-number');
+    }, 'orders-show-number', 'orders-pagination');
     bindOrderActions(applyOrderFilter);
-    DOM.$('#orders-status-filter').addEventListener('change', applyOrderFilter);
-    DOM.$('#orders-date-from').addEventListener('change', applyOrderFilter);
-    DOM.$('#orders-date-to').addEventListener('change', applyOrderFilter);
+    DOM.$('#orders-status-filter').addEventListener('change', () => applyOrderFilter(true));
+    DOM.$('#orders-date-from').addEventListener('change', () => applyOrderFilter(true));
+    DOM.$('#orders-date-to').addEventListener('change', () => applyOrderFilter(true));
     applyOrderFilter();
     DOM.$('#orders-filter-clear').addEventListener('click', () => {
       DOM.$('#orders-search').value = '';
       DOM.$('#orders-status-filter').value = '';
       DOM.$('#orders-date-from').value = '';
       DOM.$('#orders-date-to').value = '';
-      applyOrderFilter();
+      applyOrderFilter(true);
     });
     if (!params.id) {
       DOM.$('#orders-status-filter').value = 'pending';
-      applyOrderFilter();
+      applyOrderFilter(true);
     }
 
     DOM.$$('.view-order').forEach(btn => {
