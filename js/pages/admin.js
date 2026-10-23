@@ -37,6 +37,11 @@ App.ready().then(async () => {
     return;
   }
 
+  let unreadChats = 0;
+  try {
+    unreadChats = (await API.chat.listForAdmin()).filter(c => (c.unreadForAdmin || 0) > 0).length;
+  } catch (e) { /* first load / empty inbox */ }
+
   function renderLayout(content) {
     document.body.innerHTML = `
       <div class="admin-layout">
@@ -45,6 +50,7 @@ App.ready().then(async () => {
           <nav class="admin-nav">
             <a href="?view=dashboard" class="${view === 'dashboard' ? 'active' : ''}">📊 Dashboard</a>
             <a href="?view=orders" class="${view === 'orders' ? 'active' : ''}">📦 Orders</a>
+            <a href="?view=messages" class="${view === 'messages' ? 'active' : ''}">💬 Messages${unreadChats ? ` <span class="nav-badge">${unreadChats}</span>` : ''}</a>
             <a href="?view=products" class="${view === 'products' ? 'active' : ''}">🥬 Products</a>
             <a href="?view=inventory" class="${view === 'inventory' ? 'active' : ''}">📋 Inventory</a>
             <a href="?view=users" class="${view === 'users' ? 'active' : ''}">👥 Customers</a>
@@ -115,8 +121,8 @@ App.ready().then(async () => {
           <td>${o.createdAt ? Format.dateTime(o.createdAt) : '—'}</td>
           <td>${Format.currency(o.total)}</td>
           <td><span class="order-status order-status--${o.status.replace(/ /g, '\\ ')}">${o.status}</span></td>
-          ${compact ? '' : `<td><select class="status-select" data-id="${o.id}">
-            ${CONFIG.orderStatuses.map(s => `<option value="${s}" ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
+          ${compact ? '' : `<td><select class="status-select" data-id="${o.id}" ${['Cancelled', 'Refunded'].includes(o.status) ? 'disabled' : ''}>
+            ${API.order.allowedNextStatuses(o.status).map(s => `<option value="${s}" ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
           </select></td>
           <td style="white-space:nowrap">
             <button class="btn btn--outline btn--sm view-order" data-id="${o.id}">View</button>
@@ -151,30 +157,66 @@ App.ready().then(async () => {
 
     DOM.$$('.status-select').forEach(sel => {
       sel.addEventListener('change', async () => {
-        await API.order.updateStatus(sel.dataset.id, sel.value);
-        await API.admin.logAction('UPDATE_ORDER_STATUS', { orderId: sel.dataset.id, status: sel.value });
+        const next = sel.value;
+        const result = await API.order.updateStatus(sel.dataset.id, next);
+        if (!result.success) {
+          Components.toast(result.error || 'Could not update status', 'error');
+          const current = await API.order.getById(sel.dataset.id);
+          if (current.success) sel.value = current.data.status;
+          return;
+        }
+        await API.admin.logAction('UPDATE_ORDER_STATUS', { orderId: sel.dataset.id, status: next });
         Components.toast('Order status updated');
+        const row = sel.closest('tr');
+        if (row) row.dataset.status = next.toLowerCase();
+        const badge = row?.querySelector('.order-status');
+        if (badge) {
+          badge.className = `order-status order-status--${next.replace(/ /g, '\\ ')}`;
+          badge.textContent = next;
+        }
+        sel.innerHTML = API.order.allowedNextStatuses(next).map(s => `<option value="${s}" ${s === next ? 'selected' : ''}>${s}</option>`).join('');
+        sel.disabled = ['Cancelled', 'Refunded'].includes(next);
       });
     });
   }
 
   if (view === 'dashboard') {
     const stats = await API.admin.getStats();
-    const { data: recentOrders } = await API.order.getAll();
+    const { data: allOrders } = await API.order.getAll();
+    const pendingOrders = allOrders.filter(o => o.status === 'Pending');
+    const needsVerify = allOrders.filter(o => o.paymentStatus === 'awaiting_manual_verification');
+    const awaitingPay = allOrders.filter(o => o.paymentStatus === 'awaiting_payment');
     const auditSnap = await FirebaseApp.collections.auditLogs().orderBy('timestamp', 'desc').limit(5).get();
     const recentActivity = auditSnap.docs.map(d => d.data());
     renderLayout(`
-      <div class="admin-header"><h1>Dashboard</h1><span>Welcome, ${DOM.escapeHtml(admin.name)}</span></div>
+      <div class="admin-header">
+        <h1>Dashboard</h1>
+        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+          <span>Welcome, ${DOM.escapeHtml(admin.name)}</span>
+          <button type="button" class="btn btn--outline btn--sm" id="print-dashboard-report">🖨 Print report</button>
+        </div>
+      </div>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-card__value">${stats.totalOrders}</div><div class="stat-card__label">Total Orders</div></div>
         <div class="stat-card"><div class="stat-card__value">${Format.currency(stats.totalRevenue)}</div><div class="stat-card__label">Revenue</div></div>
-        <div class="stat-card"><div class="stat-card__value">${stats.pendingOrders}</div><div class="stat-card__label">Pending Orders</div></div>
+        <div class="stat-card stat-card--alert"><div class="stat-card__value">${stats.pendingOrders}</div><div class="stat-card__label">Pending Orders</div></div>
+        <div class="stat-card stat-card--alert"><div class="stat-card__value">${stats.awaitingVerification}</div><div class="stat-card__label">Awaiting Payment Check</div></div>
+        <div class="stat-card"><div class="stat-card__value">${stats.awaitingPayment}</div><div class="stat-card__label">Awaiting Online Payment</div></div>
+        <div class="stat-card"><div class="stat-card__value">${stats.outForDelivery}</div><div class="stat-card__label">Out for Delivery</div></div>
         <div class="stat-card"><div class="stat-card__value">${stats.totalProducts}</div><div class="stat-card__label">Products</div></div>
         <div class="stat-card"><div class="stat-card__value">${stats.totalUsers}</div><div class="stat-card__label">Customers</div></div>
         <div class="stat-card"><div class="stat-card__value">${stats.lowStock}</div><div class="stat-card__label">Low Stock Items</div></div>
       </div>
-      <h2>Recent Orders</h2>
-      ${renderOrdersTable(recentOrders.slice(0, 5), true)}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem">
+        <h2 style="margin:0">Pending queue (${pendingOrders.length})</h2>
+        <a href="?view=orders" class="btn btn--outline btn--sm">Manage orders</a>
+      </div>
+      ${renderSearchBar('dashboard-pending-search', 'Search pending orders...')}
+      ${renderOrdersTable(pendingOrders, false, 'dashboard-pending-table')}
+      <h2>Needs payment check (${needsVerify.length})</h2>
+      ${renderOrdersTable(needsVerify, true, 'dashboard-verify-table')}
+      <h2>Waiting for customer payment (${awaitingPay.length})</h2>
+      ${renderOrdersTable(awaitingPay, true, 'dashboard-pay-table')}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1.5rem">
         <h2 style="margin:0">Recent Activity</h2>
         <a href="?view=audit" class="btn btn--outline btn--sm">View All</a>
@@ -186,11 +228,17 @@ App.ready().then(async () => {
         `).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted)">No recent activity</td></tr>'}</tbody>
       </table>`);
     bindOrderActions();
-    bindTableSearch('dashboard-order-search', 'dashboard-orders-table', 'No recent orders match your search.');
+    bindTableSearch('dashboard-pending-search', 'dashboard-pending-table', 'No pending orders match your search.');
+    DOM.$('#print-dashboard-report')?.addEventListener('click', () => Components.printDashboardReport(stats, allOrders));
+    DOM.$$('.view-order').forEach(btn => {
+      btn.addEventListener('click', () => { window.location.href = `admin.html?view=orders&id=${btn.dataset.id}`; });
+    });
   }
 
   if (view === 'orders') {
     const { data: orders } = await API.order.getAll();
+    const statusRank = s => ({ Pending: 0, Confirmed: 1, Preparing: 2, 'Out for Delivery': 3, Delivered: 4, Cancelled: 5, Refunded: 6 }[s] ?? 9);
+    orders.sort((a, b) => statusRank(a.status) - statusRank(b.status) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     renderLayout(`
       <div class="admin-header"><h1>Order Management</h1></div>
       <div class="admin-filters" style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
@@ -232,6 +280,10 @@ App.ready().then(async () => {
       DOM.$('#orders-date-to').value = '';
       applyOrderFilter();
     });
+    if (!params.id) {
+      DOM.$('#orders-status-filter').value = 'pending';
+      applyOrderFilter();
+    }
 
     DOM.$$('.view-order').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -303,7 +355,11 @@ App.ready().then(async () => {
               ${Format.dateTime(h.timestamp)} — <strong>${h.status}</strong>${h.note ? ` (${DOM.escapeHtml(h.note)})` : ''}
             </p>`).join('')}
 
-          <button class="btn btn--outline btn--sm" id="close-order-detail" style="margin-top:1rem">Close</button>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:1rem">
+            <button class="btn btn--primary btn--sm" id="print-order-receipt">🖨 Print receipt</button>
+            <button class="btn btn--outline btn--sm" id="close-order-detail">Close</button>
+          </div>
+          <div id="admin-order-chat" style="margin-top:1.25rem"></div>
         </div>`;
 
       if (order.address?.lat && order.address?.lng && window.mapboxgl && CONFIG.mapboxToken && !CONFIG.mapboxToken.includes('YOUR_')) {
@@ -321,6 +377,8 @@ App.ready().then(async () => {
       }
 
       DOM.$('#close-order-detail').addEventListener('click', () => { DOM.$('#order-detail').innerHTML = ''; });
+      DOM.$('#print-order-receipt')?.addEventListener('click', () => Components.printOrderReceipt(order));
+      Components.mountOrderChat(DOM.$('#admin-order-chat'), order);
 
       DOM.$('#confirm-payment-btn')?.addEventListener('click', async () => {
         if (!confirm(`Confirm you received ${Format.currency(order.total)} via ${order.paymentMethod} for this order?`)) return;
@@ -333,6 +391,59 @@ App.ready().then(async () => {
         }
       });
     }
+
+    if (params.id) {
+      const focused = await API.order.getById(params.id);
+      if (focused.success) {
+        renderOrderDetail(focused.data);
+        DOM.$('#order-detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }
+
+  if (view === 'messages') {
+    let chats = [];
+    try { chats = await API.chat.listForAdmin(); } catch (e) { chats = []; }
+    renderLayout(`
+      <div class="admin-header"><h1>Order messages</h1></div>
+      <p style="color:var(--color-text-muted);margin-bottom:1rem">Conversations customers started about their orders.</p>
+      ${chats.length ? `
+        <div class="admin-chat-layout">
+          <div class="admin-chat-list" id="admin-chat-list">
+            ${chats.map(c => `
+              <button type="button" class="admin-chat-list__item ${(c.unreadForAdmin || 0) > 0 ? 'is-unread' : ''}" data-id="${c.orderId || c.id}">
+                <strong>${DOM.escapeHtml(c.userName || 'Customer')}</strong>
+                <small>${DOM.escapeHtml(c.orderId || c.id)}</small>
+                <p>${DOM.escapeHtml(c.lastMessage || 'No messages yet')}</p>
+                ${(c.unreadForAdmin || 0) > 0 ? `<span class="nav-badge">${c.unreadForAdmin}</span>` : ''}
+              </button>`).join('')}
+          </div>
+          <div id="admin-chat-pane">
+            <p style="color:var(--color-text-muted)">Select a conversation.</p>
+          </div>
+        </div>` : '<p style="color:var(--color-text-muted)">No order chats yet.</p>'}`);
+
+    DOM.$$('.admin-chat-list__item').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        DOM.$$('.admin-chat-list__item').forEach(b => b.classList.toggle('is-active', b === btn));
+        const result = await API.order.getById(btn.dataset.id);
+        const pane = DOM.$('#admin-chat-pane');
+        if (!result.success) { pane.innerHTML = '<p>Could not load this order.</p>'; return; }
+        pane.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;margin-bottom:0.75rem">
+            <div>
+              <strong>${result.data.id}</strong>
+              <p style="margin:0;font-size:0.85rem;color:var(--color-text-muted)">${DOM.escapeHtml(result.data.userName || '')} · ${result.data.status} · ${Format.currency(result.data.total)}</p>
+            </div>
+            <a class="btn btn--outline btn--sm" href="?view=orders&id=${result.data.id}">Open order</a>
+          </div>
+          <div id="admin-inbox-chat"></div>`;
+        Components.mountOrderChat(DOM.$('#admin-inbox-chat'), result.data);
+        btn.classList.remove('is-unread');
+        const badge = btn.querySelector('.nav-badge');
+        if (badge) badge.remove();
+      });
+    });
   }
 
 if (view === 'products') {

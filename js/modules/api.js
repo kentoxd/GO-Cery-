@@ -61,6 +61,9 @@ const API = {
       result.sort((a, b) => Math.max(...b.variants.map(v => v.price)) - Math.max(...a.variants.map(v => v.price)));
     } else if (filters.sort === 'name') {
       result.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (filters.sort === 'stock-desc' || filters.sort === 'stock-asc') {
+      const stockOf = p => (p.variants || []).reduce((s, v) => s + Math.max(0, v.stock || 0), 0);
+      result.sort((a, b) => filters.sort === 'stock-asc' ? stockOf(a) - stockOf(b) : stockOf(b) - stockOf(a));
     }
     return result;
   },
@@ -456,11 +459,24 @@ const API = {
       return { success: true };
     },
 
+    allowedNextStatuses(current) {
+      if (current === 'Delivered') return ['Delivered', 'Refunded'];
+      if (current === 'Cancelled' || current === 'Refunded') return [current];
+      return CONFIG.orderStatuses.slice();
+    },
+
+    canChangeStatus(from, to) {
+      return this.allowedNextStatuses(from).includes(to);
+    },
+
     async updateStatus(id, status, note = '') {
       const ref = FirebaseApp.collections.orders().doc(id);
       const doc = await ref.get();
       if (!doc.exists) return { success: false, error: 'Order not found' };
       const data = doc.data();
+      if (!this.canChangeStatus(data.status, status)) {
+        return { success: false, error: `A ${data.status} order cannot be changed to ${status}.` };
+      }
       const statusHistory = [...(data.statusHistory || []), { status, timestamp: new Date().toISOString(), note }];
       const updates = { status, statusHistory };
 
@@ -571,6 +587,87 @@ const API = {
       const result = { id, status: 'Confirmed', paymentStatus: 'paid' };
       API._emit('order:updated', result);
       return { success: true, data: result };
+    }
+  },
+
+  chat: {
+    _order(orderId) {
+      return FirebaseApp.collections.orders().doc(orderId);
+    },
+
+    _messages(orderId) {
+      return this._order(orderId).collection('messages');
+    },
+
+    async send(order, text) {
+      const user = API.user.getCurrent();
+      const admin = API.admin.getCurrent();
+      if (!user && !admin) return { success: false, error: 'You must be logged in.' };
+      const trimmed = String(text || '').trim();
+      if (!trimmed) return { success: false, error: 'Please type a message.' };
+      if (trimmed.length > 1000) return { success: false, error: 'Message is too long (1000 character max).' };
+
+      const sender = admin || user;
+      const senderRole = admin ? 'admin' : 'user';
+      const createdAt = new Date().toISOString();
+      try {
+        await this._messages(order.id).add({
+          senderId: sender.id,
+          senderRole,
+          senderName: sender.name || (admin ? 'Admin' : 'Customer'),
+          text: trimmed,
+          createdAt
+        });
+        const updates = {
+          lastChatAt: createdAt,
+          lastChatPreview: trimmed.slice(0, 140),
+          lastChatRole: senderRole
+        };
+        if (senderRole === 'admin') updates.unreadForUser = firebase.firestore.FieldValue.increment(1);
+        else updates.unreadForAdmin = firebase.firestore.FieldValue.increment(1);
+        await this._order(order.id).update(updates);
+        return { success: true };
+      } catch (err) {
+        console.error('Order chat send:', err);
+        return { success: false, error: err.code === 'permission-denied'
+          ? 'Could not send the message. Please refresh and try again.'
+          : (err.message || 'Could not send the message.') };
+      }
+    },
+
+    subscribe(orderId, onMessages, onError) {
+      return this._messages(orderId).orderBy('createdAt', 'asc').onSnapshot(
+        snap => onMessages(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+        err => {
+          console.error('Order chat:', err);
+          if (onError) onError(err);
+        }
+      );
+    },
+
+    async markRead(orderId, role) {
+      const field = role === 'admin' ? 'unreadForAdmin' : 'unreadForUser';
+      try {
+        await this._order(orderId).update({ [field]: 0 });
+      } catch (err) { /* order may not have chat fields yet */ }
+    },
+
+    async listForAdmin() {
+      const snap = await FirebaseApp.collections.orders()
+        .orderBy('lastChatAt', 'desc')
+        .limit(100)
+        .get();
+      return snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          orderId: d.id,
+          userName: data.userName || 'Customer',
+          lastMessage: data.lastChatPreview || '',
+          lastMessageAt: data.lastChatAt,
+          unreadForAdmin: data.unreadForAdmin || 0
+        };
+      });
     }
   },
 
@@ -930,6 +1027,11 @@ const API = {
         totalProducts: products.length,
         totalUsers: usersSnap.size,
         pendingOrders: orders.filter(o => o.status === 'Pending').length,
+        awaitingVerification: orders.filter(o => o.paymentStatus === 'awaiting_manual_verification').length,
+        awaitingPayment: orders.filter(o => o.paymentStatus === 'awaiting_payment').length,
+        preparingOrders: orders.filter(o => o.status === 'Preparing' || o.status === 'Confirmed').length,
+        outForDelivery: orders.filter(o => o.status === 'Out for Delivery').length,
+        deliveredOrders: orders.filter(o => o.status === 'Delivered').length,
         lowStock: products.filter(p => p.variants.some(v => v.stock < 10)).length
       };
     }

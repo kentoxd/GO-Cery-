@@ -408,6 +408,14 @@ h3 { font-size: 1.15rem; }
   font-size: 1rem;
   margin-top: auto;
 }
+.product-card__stock {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.product-card__stock.is-in { color: var(--color-success); }
+.product-card__stock.is-low { color: var(--color-accent-dark, #c2410c); }
+.product-card__stock.is-out { color: var(--color-error); }
 .product-card__actions {
   display: flex;
   gap: 0.5rem;

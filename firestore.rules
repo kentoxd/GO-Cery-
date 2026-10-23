@@ -90,8 +90,28 @@ service cloud.firestore {
             && resource.data.userId == request.auth.uid
             && resource.data.status == 'Pending'
             && request.resource.data.status == 'Cancelled'
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusHistory']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusHistory']))
+        // customers may update chat metadata on their own order
+        || (isSignedIn()
+            && resource.data.userId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['lastChatAt', 'lastChatPreview', 'lastChatRole', 'unreadForAdmin', 'unreadForUser']));
       allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && (
+          get(orderRef(orderId)).data.userId == request.auth.uid || isAdmin()
+        );
+        allow create: if isSignedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && (
+            isAdmin() || get(orderRef(orderId)).data.userId == request.auth.uid
+          );
+        allow update, delete: if false;
+      }
     }
 
     match /loyalty/{userId} {
@@ -108,5 +128,6 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if isAdmin();
     }
+
   }
 }

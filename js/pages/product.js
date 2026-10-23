@@ -37,6 +37,7 @@ App.ready().then(async () => {
             <button class="variant-btn ${v.id === selectedVariant.id ? 'active' : ''} ${v.stock <= 0 ? 'disabled' : ''}"
               data-id="${v.id}" ${v.stock <= 0 ? 'disabled' : ''}>
               ${Format.unitLabel(v.unit)} – ${Format.currency(v.price)}
+              <small>${v.stock <= 0 ? 'sold out' : `${v.stock} in stock`}</small>
             </button>
           `).join('')}
         </div>

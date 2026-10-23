@@ -114,12 +114,18 @@ const Components = {
     const priceDisplay = `<span class="card-price">${Format.currency(firstVariant.price)}</span> <small class="card-unit">${unitText(firstVariant.unit)}</small>`;
     const variantPicker = inStock && options.showAdd && product.variants.length > 1
       ? `<select class="card-variant" aria-label="Choose size for ${DOM.escapeHtml(product.name)}">
-          ${product.variants.map(v => `<option value="${v.id}" data-price="${v.price}" data-unit="${DOM.escapeHtml(unitText(v.unit))}" ${v.id === firstVariant.id ? 'selected' : ''} ${v.stock <= 0 ? 'disabled' : ''}>${DOM.escapeHtml(v.unit)} – ${Format.currency(v.price)}${v.stock <= 0 ? ' (sold out)' : ''}</option>`).join('')}
+          ${product.variants.map(v => `<option value="${v.id}" data-price="${v.price}" data-unit="${DOM.escapeHtml(unitText(v.unit))}" data-stock="${v.stock}" ${v.id === firstVariant.id ? 'selected' : ''} ${v.stock <= 0 ? 'disabled' : ''}>${DOM.escapeHtml(v.unit)} – ${Format.currency(v.price)}${v.stock <= 0 ? ' (sold out)' : ` (${v.stock} left)`}</option>`).join('')}
         </select>` : '';
     const user = API.user.getCurrent();
+    const stockClass = !inStock ? 'is-out' : lowStock ? 'is-low' : 'is-in';
+    const stockText = !inStock
+      ? 'Out of stock'
+      : lowStock
+        ? `Low stock · ${firstVariant.stock} ${unitText(firstVariant.unit)} left`
+        : `${firstVariant.stock} ${unitText(firstVariant.unit)} in stock`;
 
     return `
-      <article class="product-card ${!inStock ? 'product-card--sold-out' : ''}" data-id="${product.id}">
+      <article class="product-card ${!inStock ? 'product-card--sold-out' : ''}" data-id="${product.id}" data-stock="${firstVariant.stock || 0}">
         <a href="${this._root()}pages/product.html?id=${product.id}" class="product-card__image">
           ${product.imageUrl
           ? `<img src="${DOM.escapeHtml(product.imageUrl)}" alt="${DOM.escapeHtml(product.name)}" loading="lazy" class="product-card__photo" style="width:100%;height:100%;object-fit:cover" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="product-emoji" hidden>${product.image}</span>`
@@ -134,6 +140,7 @@ const Components = {
           </h3>
           ${rating > 0 ? `<div class="product-card__rating">${'★'.repeat(Math.round(rating))}${'☆'.repeat(5 - Math.round(rating))} <small>(${rating.toFixed(1)})</small></div>` : ''}
           <p class="product-card__price">${priceDisplay}</p>
+          <p class="product-card__stock ${stockClass}">${stockText}</p>
           ${variantPicker}
           <div class="product-card__actions">
             ${inStock && options.showAdd
@@ -313,10 +320,13 @@ const Components = {
       const qtyPlus = e.target.closest('.card-qty-plus');
       if (qtyMinus || qtyPlus) {
         const stepper = (qtyMinus || qtyPlus).closest('.qty-stepper');
+        const card = stepper?.closest('.product-card');
         const valueEl = stepper?.querySelector('.card-qty-value');
         if (valueEl) {
           let qty = parseInt(valueEl.textContent, 10) || 1;
-          qty = qtyPlus ? qty + 1 : Math.max(1, qty - 1);
+          const selected = card?.querySelector('.card-variant')?.selectedOptions?.[0];
+          const max = parseInt(selected?.dataset.stock || card?.dataset.stock, 10) || 99;
+          qty = qtyPlus ? Math.min(max, qty + 1) : Math.max(1, qty - 1);
           valueEl.textContent = qty;
         }
         return;
@@ -328,6 +338,12 @@ const Components = {
         const qty = qtyEl ? (parseInt(qtyEl.textContent, 10) || 1) : 1;
         const user = API.user.getCurrent();
         const variantId = card?.querySelector('.card-variant')?.value || btn.dataset.variant;
+        const selected = card?.querySelector('.card-variant')?.selectedOptions?.[0];
+        const maxStock = parseInt(selected?.dataset.stock || card?.dataset.stock, 10);
+        if (Number.isFinite(maxStock) && qty > maxStock) {
+          Components.toast(`Only ${maxStock} left in stock.`, 'error');
+          return;
+        }
         if (btn.disabled) return;
         const label = btn.textContent;
         btn.disabled = true;
@@ -363,9 +379,22 @@ const Components = {
       if (!select) return;
       const card = select.closest('.product-card');
       const option = select.options[select.selectedIndex];
+      const stock = parseInt(option.dataset.stock, 10) || 0;
       card.querySelector('.card-price').textContent = Format.currency(Number(option.dataset.price));
       card.querySelector('.card-unit').textContent = option.dataset.unit;
       card.querySelector('.add-to-cart-btn').dataset.variant = select.value;
+      card.dataset.stock = String(stock);
+      const stockEl = card.querySelector('.product-card__stock');
+      if (stockEl) {
+        stockEl.className = `product-card__stock ${stock <= 0 ? 'is-out' : stock <= 10 ? 'is-low' : 'is-in'}`;
+        stockEl.textContent = stock <= 0
+          ? 'Out of stock'
+          : stock <= 10
+            ? `Low stock · ${stock} ${option.dataset.unit} left`
+            : `${stock} ${option.dataset.unit} in stock`;
+      }
+      const qtyEl = card.querySelector('.card-qty-value');
+      if (qtyEl && parseInt(qtyEl.textContent, 10) > stock) qtyEl.textContent = String(Math.max(1, stock));
     });
 
     document.addEventListener('gocery:cart:updated', () => Components.updateCartBadge());
@@ -375,6 +404,155 @@ const Components = {
   _activePage: '',
   _globalBound: false,
   _cartCount: 0,
+
+  _printWindow(title, bodyHtml) {
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${DOM.escapeHtml(title)}</title>
+      <style>
+        body { font-family: Georgia, 'Times New Roman', serif; color: #111; margin: 24px; }
+        h1 { font-size: 22px; margin: 0 0 4px; }
+        h2 { font-size: 16px; margin: 20px 0 8px; }
+        p, td, th { font-size: 13px; }
+        .muted { color: #555; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #ddd; }
+        th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+        .right { text-align: right; }
+        .total td { font-weight: 700; font-size: 15px; border-top: 2px solid #111; }
+        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0 20px; }
+        .stat { border: 1px solid #ccc; padding: 10px; }
+        .stat b { display: block; font-size: 18px; }
+        .brand { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 16px; }
+      </style></head><body>${bodyHtml}
+      <p class="muted" style="margin-top:24px">Generated ${new Date().toLocaleString()}</p>
+      </body></html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('title', title);
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const frameWindow = iframe.contentWindow;
+    const doc = frameWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    const printFrame = () => {
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+      } catch (err) {
+        console.error('Print failed:', err);
+        this.toast('Could not open the print dialog. Try again.', 'error');
+      }
+      setTimeout(() => iframe.remove(), 1000);
+    };
+    setTimeout(printFrame, 250);
+  },
+
+  printOrderReceipt(order) {
+    const items = (order.items || []).map(i => `
+      <tr><td>${i.quantity} × ${DOM.escapeHtml(i.name)} (${DOM.escapeHtml(i.unit)})</td>
+          <td class="right">${Format.currency(i.lineTotal)}</td></tr>`).join('');
+    const addr = order.address ? `${DOM.escapeHtml(order.address.street)}, ${DOM.escapeHtml(order.address.city)}` : 'N/A';
+    this._printWindow(`Receipt ${order.id}`, `
+      <div class="brand">
+        <div><h1>${CONFIG.appName}</h1><p class="muted" style="margin:0">Order receipt</p></div>
+        <div class="right"><strong>${DOM.escapeHtml(order.id)}</strong><br>
+          <span class="muted">${order.createdAt ? Format.dateTime(order.createdAt) : ''}</span></div>
+      </div>
+      <p><strong>Customer:</strong> ${DOM.escapeHtml(order.userName || 'Guest')}<br>
+         <strong>Status:</strong> ${DOM.escapeHtml(order.status)} · ${DOM.escapeHtml(order.paymentMethod || '')} (${DOM.escapeHtml(order.paymentStatus || '')})<br>
+         <strong>Delivery:</strong> ${order.deliveryDate ? Format.date(order.deliveryDate) : ''} · ${DOM.escapeHtml(order.deliverySlot || '')}<br>
+         <strong>Address:</strong> ${addr}</p>
+      <table>
+        <thead><tr><th>Item</th><th class="right">Amount</th></tr></thead>
+        <tbody>
+          ${items}
+          <tr><td>Subtotal</td><td class="right">${Format.currency(order.subtotal || 0)}</td></tr>
+          ${order.discount ? `<tr><td>Discount${order.promoCode ? ` (${DOM.escapeHtml(order.promoCode)})` : ''}</td><td class="right">-${Format.currency(order.discount)}</td></tr>` : ''}
+          <tr><td>Delivery</td><td class="right">${order.deliveryFee === 0 ? 'FREE' : Format.currency(order.deliveryFee || 0)}</td></tr>
+          <tr class="total"><td>Total</td><td class="right">${Format.currency(order.total || 0)}</td></tr>
+        </tbody>
+      </table>`);
+  },
+
+  printDashboardReport(stats, orders) {
+    const byStatus = CONFIG.orderStatuses.map(s => {
+      const list = orders.filter(o => o.status === s);
+      return `<tr><td>${s}</td><td class="right">${list.length}</td><td class="right">${Format.currency(list.reduce((sum, o) => sum + (o.total || 0), 0))}</td></tr>`;
+    }).join('');
+    const pendingRows = orders.filter(o => o.status === 'Pending').slice(0, 40).map(o => `
+      <tr><td>${DOM.escapeHtml(o.id)}</td><td>${DOM.escapeHtml(o.userName || 'Guest')}</td>
+          <td>${o.createdAt ? Format.dateTime(o.createdAt) : '—'}</td>
+          <td class="right">${Format.currency(o.total)}</td></tr>`).join('');
+    this._printWindow('Dashboard report', `
+      <div class="brand"><div><h1>${CONFIG.appName}</h1><p class="muted" style="margin:0">Admin dashboard report</p></div></div>
+      <div class="stat-grid">
+        <div class="stat"><b>${stats.totalOrders}</b>Total orders</div>
+        <div class="stat"><b>${Format.currency(stats.totalRevenue)}</b>Revenue</div>
+        <div class="stat"><b>${stats.pendingOrders}</b>Pending</div>
+        <div class="stat"><b>${stats.awaitingVerification || 0}</b>Awaiting payment check</div>
+        <div class="stat"><b>${stats.outForDelivery || 0}</b>Out for delivery</div>
+        <div class="stat"><b>${stats.lowStock}</b>Low stock items</div>
+      </div>
+      <h2>Orders by status</h2>
+      <table><thead><tr><th>Status</th><th class="right">Count</th><th class="right">Value</th></tr></thead><tbody>${byStatus}</tbody></table>
+      <h2>Pending orders</h2>
+      <table><thead><tr><th>Order</th><th>Customer</th><th>Placed</th><th class="right">Total</th></tr></thead>
+      <tbody>${pendingRows || '<tr><td colspan="4">No pending orders</td></tr>'}</tbody></table>`);
+  },
+
+  mountOrderChat(root, order) {
+    if (!root || !order) return;
+    if (root._chatUnsub) { root._chatUnsub(); root._chatUnsub = null; }
+    const role = API.admin.getCurrent() ? 'admin' : 'user';
+    root.innerHTML = `
+      <div class="order-chat">
+        <h3 class="order-chat__title">Chat about this order</h3>
+        <p class="order-chat__hint">${role === 'admin' ? 'Message the customer about this order.' : 'Message the store about this order. An admin will reply here.'}</p>
+        <div class="order-chat__messages" id="chat-messages-${order.id}"></div>
+        <form class="order-chat__form" id="chat-form-${order.id}">
+          <input type="text" maxlength="1000" placeholder="Type a message…" aria-label="Chat message" required>
+          <button type="submit" class="btn btn--primary btn--sm">Send</button>
+        </form>
+        <p class="form-error" id="chat-error-${order.id}"></p>
+      </div>`;
+    const list = DOM.$(`#chat-messages-${order.id}`, root);
+    const form = DOM.$(`#chat-form-${order.id}`, root);
+    const errorEl = DOM.$(`#chat-error-${order.id}`, root);
+    const me = (API.admin.getCurrent() || API.user.getCurrent() || {}).id;
+    root._chatUnsub = API.chat.subscribe(order.id, messages => {
+      list.innerHTML = messages.length
+        ? messages.map(m => `
+            <div class="chat-bubble ${m.senderId === me ? 'chat-bubble--mine' : ''}">
+              <strong>${DOM.escapeHtml(m.senderRole === 'admin' ? 'Admin' : (m.senderName || 'Customer'))}</strong>
+              <p>${DOM.escapeHtml(m.text)}</p>
+              <small>${m.createdAt ? Format.dateTime(m.createdAt) : ''}</small>
+            </div>`).join('')
+        : '<p class="order-chat__empty">No messages yet. Say hello.</p>';
+      list.scrollTop = list.scrollHeight;
+      if (messages.length) API.chat.markRead(order.id, role).catch(() => {});
+    }, err => {
+      errorEl.textContent = 'Chat could not load. Refresh this page and try again.';
+    });
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const input = form.querySelector('input');
+      const btn = form.querySelector('button');
+      errorEl.textContent = '';
+      btn.disabled = true;
+      try {
+        const result = await API.chat.send(order, input.value);
+        if (!result.success) { errorEl.textContent = result.error; return; }
+        input.value = '';
+        input.focus();
+      } catch (err) {
+        errorEl.textContent = 'Could not send the message. Please try again.';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  },
 
   _root() {
     const path = window.location.pathname;
