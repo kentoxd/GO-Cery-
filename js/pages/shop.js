@@ -84,6 +84,8 @@ App.ready().then(async () => {
           <option value="name" ${filters.sort === 'name' ? 'selected' : ''}>Name A–Z</option>
           <option value="price-asc" ${filters.sort === 'price-asc' ? 'selected' : ''}>Price: Low to High</option>
           <option value="price-desc" ${filters.sort === 'price-desc' ? 'selected' : ''}>Price: High to Low</option>
+          <option value="stock-desc" ${filters.sort === 'stock-desc' ? 'selected' : ''}>Stock: High to Low</option>
+          <option value="stock-asc" ${filters.sort === 'stock-asc' ? 'selected' : ''}>Low stock first</option>
         </select>
       </div>`;
 

@@ -69,10 +69,11 @@ App.ready().then(async () => {
     }
 
     async function renderCardPanel(o) {
-      const cfg = await Payments.getConfig();
-      DOM.$('#pay-body').innerHTML = `
+      const body = DOM.$('#pay-body');
+      if (!body) return;
+      body.innerHTML = `
         <h3 style="margin:0.5rem 0">Pay with card</h3>
-        ${cfg.mode === 'test' ? '<p class="pay-test-note">Test mode: use card 4343 4343 4343 4345, any future expiry date, and any 3-digit CVC. For a 3D Secure test, use 4120 0000 0000 0007. No real money is charged.</p>' : ''}
+        <div id="pay-test-note"></div>
         <div class="form-group"><label for="card-name">Name on card</label><input id="card-name" autocomplete="cc-name" value="${DOM.escapeHtml(user.name || '')}"></div>
         <div class="form-group"><label for="card-number">Card number</label><input id="card-number" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="4343 4343 4343 4345"></div>
         <div class="pay-row">
@@ -123,16 +124,27 @@ App.ready().then(async () => {
         }
         await waitForPayment(o.id, 8);
       });
+      Payments.getConfig().then(cfg => {
+        if (cfg.mode === 'test' && DOM.$('#pay-test-note')) {
+          DOM.$('#pay-test-note').innerHTML = '<p class="pay-test-note">Test mode: use card 4343 4343 4343 4345, any future expiry date, and any 3-digit CVC. For a 3D Secure test, use 4120 0000 0000 0007. No real money is charged.</p>';
+        }
+      }).catch(() => {});
     }
 
-    async function renderEwalletPanel(o) {
+    function renderEwalletPanel(o) {
       const wallet = o.paymentMethod === 'Maya (Online)' ? 'Maya' : 'GCash';
-      const cfg = await Payments.getConfig();
-      DOM.$('#pay-body').innerHTML = `
+      const body = DOM.$('#pay-body');
+      if (!body) return;
+      body.innerHTML = `
         <h3 style="margin:0.5rem 0">Pay with ${wallet}</h3>
         <p style="color:var(--color-text-muted)">You will be taken to PayMongo to approve the payment in your ${wallet} account, then brought back here.</p>
-        ${cfg.mode === 'test' ? '<p class="pay-test-note">Test mode: PayMongo will show a test page. Choose <strong>Authorize</strong> to simulate a successful payment, or <strong>Fail</strong> to simulate a failed one. No real money is charged.</p>' : ''}
+        <div id="pay-test-note"></div>
         <button class="btn btn--primary" id="gcash-pay-btn">Pay ${Format.currency(o.total)} with ${wallet}</button>`;
+      Payments.getConfig().then(cfg => {
+        if (cfg.mode === 'test' && DOM.$('#pay-test-note')) {
+          DOM.$('#pay-test-note').innerHTML = '<p class="pay-test-note">Test mode: PayMongo will show a test page. Choose <strong>Authorize</strong> to simulate a successful payment, or <strong>Fail</strong> to simulate a failed one. No real money is charged.</p>';
+        }
+      }).catch(() => {});
       DOM.$('#gcash-pay-btn').addEventListener('click', async () => {
         const btn = DOM.$('#gcash-pay-btn');
         const errorEl = DOM.$('#pay-error');
@@ -273,7 +285,6 @@ App.ready().then(async () => {
           <span class="order-status order-status--${order.status.replace(/ /g, '\\ ')}">${order.status}</span>
         </div>
         <p class="order-status-msg">${statusMessages[order.status] || ''}</p>
-        ${needsPayment ? `<div class="pay-panel" id="pay-panel"></div>` : ''}
         ${needsReceipt ? `<div class="receipt-panel receipt-panel--top" id="receipt-panel">${receiptPanelInnerHtml()}</div>` : ''}
         <div class="order-track">
           ${CONFIG.orderStatuses.slice(0, 5).map((s, i) => `
@@ -296,14 +307,22 @@ App.ready().then(async () => {
         <p><strong>Delivery:</strong> ${Format.date(order.deliveryDate)} · ${order.deliverySlot}</p>
         <p><strong>Address:</strong> ${order.address ? DOM.escapeHtml(order.address.street) + ', ' + DOM.escapeHtml(order.address.city) : 'N/A'}</p>
         <p><strong>Payment:</strong> ${order.paymentMethod} · ${paymentLabel(order)}</p>
+        ${needsPayment ? `<div class="pay-panel" id="pay-panel"></div>` : ''}
         ${order.status === 'Pending' ? `
           <button class="btn btn--outline btn--sm" id="cancel-order-btn" style="margin-top:1rem;color:var(--color-error);border-color:var(--color-error)">Cancel Order</button>
           <p class="form-error" id="cancel-error"></p>` : ''}
+        <button class="btn btn--outline btn--sm" id="print-order-receipt" style="margin-top:1rem">🖨 Print receipt</button>
+        <div id="order-chat"></div>
       </div>`;
 
     bindReceiptPanel();
-    if (needsPayment) renderPayPanel(order);
+    if (needsPayment) {
+      renderPayPanel(order);
+      DOM.$('#pay-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     if (isOnline && (params.pm === 'return' || params.payment_intent_id)) handleCardReturn(order);
+    DOM.$('#print-order-receipt')?.addEventListener('click', () => Components.printOrderReceipt(order));
+    if (user) Components.mountOrderChat(DOM.$('#order-chat'), order);
 
     DOM.$('#cancel-order-btn')?.addEventListener('click', async () => {
       if (!confirm('Cancel this order? This cannot be undone.')) return;

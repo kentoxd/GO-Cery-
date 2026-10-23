@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Returning to Go! Cery</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      background: #14532d;
+      color: #fff;
+      text-align: center;
+      padding: 1.5rem;
+    }
+  </style>
+  <script>
+    (function () {
+      var q = window.location.search || '';
+      var id = new URLSearchParams(q).get('id') || new URLSearchParams(q).get('orderId') || '';
+      var sep = q ? '&' : '?';
+      var appUrl = 'gocery://payment-return' + q + sep + 'orderId=' + encodeURIComponent(id);
+      var intent = 'intent://payment-return' + q + sep + 'orderId=' + encodeURIComponent(id)
+        + '#Intent;scheme=gocery;package=com.gocery.mobile;end';
+      window.location.replace(intent);
+      setTimeout(function () { window.location.replace(appUrl); }, 400);
+    })();
+  </script>
+</head>
+<body>
+  <p>Returning to the Go! Cery app…</p>
+</body>
+</html>
