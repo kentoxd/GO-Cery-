@@ -71,7 +71,7 @@ App.ready().then(async () => {
     </div>`;
   }
 
-  function bindTableSearch(inputId, tableId, emptyMessage, additionalMatch = () => true) {
+  function bindTableSearch(inputId, tableId, emptyMessage, additionalMatch = () => true, maxVisibleInputId = null) {
     const input = DOM.$(`#${inputId}`);
     const table = DOM.$(`#${tableId}`);
     if (!input || !table) return () => {};
@@ -79,11 +79,19 @@ App.ready().then(async () => {
     const applyFilter = () => {
       const query = input.value.trim().toLowerCase();
       const rows = DOM.$$('tbody tr', table);
+      const maxVisibleInput = maxVisibleInputId ? DOM.$(`#${maxVisibleInputId}`) : null;
+      const maxVisible = maxVisibleInput && maxVisibleInput.value !== 'all'
+        ? Number(maxVisibleInput.value)
+        : Infinity;
+      const matchingRows = rows.filter(row =>
+        !row.classList.contains('table-filter-empty')
+        && (!query || row.textContent.toLowerCase().includes(query))
+        && additionalMatch(row)
+      );
       let visibleRows = 0;
-      rows.forEach(row => {
-        const matches = (!query || row.textContent.toLowerCase().includes(query)) && additionalMatch(row);
-        row.hidden = !matches;
-        if (matches) visibleRows++;
+      matchingRows.forEach((row, index) => {
+        row.hidden = index >= maxVisible;
+        if (!row.hidden) visibleRows++;
       });
 
       let emptyRow = table.querySelector('.table-filter-empty');
@@ -101,6 +109,7 @@ App.ready().then(async () => {
     };
 
     input.addEventListener('input', applyFilter);
+    if (maxVisibleInputId) DOM.$(`#${maxVisibleInputId}`)?.addEventListener('change', applyFilter);
     return applyFilter;
   }
 
@@ -127,7 +136,7 @@ App.ready().then(async () => {
     </table>`;
   }
 
-  function bindOrderActions() {
+  function bindOrderActions(refreshOrders = () => {}) {
     DOM.$$('.delete-order').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
@@ -140,6 +149,7 @@ App.ready().then(async () => {
           if (row) row.remove();
           const detail = DOM.$('#order-detail');
           if (detail) detail.innerHTML = '';
+          refreshOrders();
           Components.toast('Order deleted');
         } catch (err) {
           console.error('Delete order failed:', err);
@@ -153,6 +163,9 @@ App.ready().then(async () => {
       sel.addEventListener('change', async () => {
         await API.order.updateStatus(sel.dataset.id, sel.value);
         await API.admin.logAction('UPDATE_ORDER_STATUS', { orderId: sel.dataset.id, status: sel.value });
+        const row = sel.closest('tr');
+        if (row) row.dataset.status = sel.value.toLowerCase();
+        refreshOrders();
         Components.toast('Order status updated');
       });
     });
@@ -205,11 +218,20 @@ App.ready().then(async () => {
         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--color-text-muted)">To
           <input id="orders-date-to" type="date" aria-label="Filter orders to date" style="padding:0.5rem">
         </label>
+        <label for="orders-show-number" style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--color-text-muted)">Show
+          <select id="orders-show-number" aria-label="Number of orders to show" style="padding:0.5rem">
+            <option value="10" selected>10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="all">All</option>
+          </select>
+          orders
+        </label>
         <button class="btn btn--outline btn--sm" id="orders-filter-clear" type="button">Clear</button>
       </div>
       ${renderOrdersTable(orders, false, 'orders-table')}
       <div id="order-detail" style="margin-top:1.5rem"></div>`);
-    bindOrderActions();
     const applyOrderFilter = bindTableSearch('orders-search', 'orders-table', 'No orders match your filters.', row => {
       const status = DOM.$('#orders-status-filter').value;
       if (status && row.dataset.status !== status) return false;
@@ -221,10 +243,12 @@ App.ready().then(async () => {
       if (toVal && (!created || created > new Date(toVal + 'T23:59:59'))) return false;
 
       return true;
-    });
+    }, 'orders-show-number');
+    bindOrderActions(applyOrderFilter);
     DOM.$('#orders-status-filter').addEventListener('change', applyOrderFilter);
     DOM.$('#orders-date-from').addEventListener('change', applyOrderFilter);
     DOM.$('#orders-date-to').addEventListener('change', applyOrderFilter);
+    applyOrderFilter();
     DOM.$('#orders-filter-clear').addEventListener('click', () => {
       DOM.$('#orders-search').value = '';
       DOM.$('#orders-status-filter').value = '';
@@ -303,7 +327,10 @@ App.ready().then(async () => {
               ${Format.dateTime(h.timestamp)} — <strong>${h.status}</strong>${h.note ? ` (${DOM.escapeHtml(h.note)})` : ''}
             </p>`).join('')}
 
-          <button class="btn btn--outline btn--sm" id="close-order-detail" style="margin-top:1rem">Close</button>
+          <div style="display:flex;gap:0.5rem;margin-top:1rem">
+            <button class="btn btn--primary btn--sm" id="print-order-receipt" type="button">Print Receipt</button>
+            <button class="btn btn--outline btn--sm" id="close-order-detail" type="button">Close</button>
+          </div>
         </div>`;
 
       if (order.address?.lat && order.address?.lng && window.mapboxgl && CONFIG.mapboxToken && !CONFIG.mapboxToken.includes('YOUR_')) {
@@ -321,6 +348,7 @@ App.ready().then(async () => {
       }
 
       DOM.$('#close-order-detail').addEventListener('click', () => { DOM.$('#order-detail').innerHTML = ''; });
+      DOM.$('#print-order-receipt').addEventListener('click', () => printOrderReceipt(order));
 
       DOM.$('#confirm-payment-btn')?.addEventListener('click', async () => {
         if (!confirm(`Confirm you received ${Format.currency(order.total)} via ${order.paymentMethod} for this order?`)) return;
@@ -332,6 +360,83 @@ App.ready().then(async () => {
           Components.toast(result.error || 'Could not confirm payment', 'error');
         }
       });
+    }
+
+    function printOrderReceipt(order) {
+      const escape = DOM.escapeHtml;
+      const items = (order.items || []).map(item => `
+        <tr>
+          <td>${escape(item.name || '')}${item.unit ? ` (${escape(item.unit)})` : ''}</td>
+          <td class="number">${escape(String(item.quantity ?? ''))}</td>
+          <td class="number">${escape(Format.currency(item.lineTotal))}</td>
+        </tr>`).join('');
+      const address = order.address
+        ? [order.address.street, order.address.city, order.address.province].filter(Boolean).map(escape).join(', ')
+        : '—';
+      const delivery = [order.deliveryDate ? Format.date(order.deliveryDate) : '', order.deliverySlot, order.zone]
+        .filter(Boolean).map(escape).join(' · ') || '—';
+      const frame = document.createElement('iframe');
+      frame.setAttribute('title', `Print receipt for order ${order.id}`);
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+
+      const receiptHtml = `<!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <title>Receipt ${escape(order.id)}</title>
+            <style>
+              body { font: 14px Arial, sans-serif; color: #222; margin: 32px; }
+              h1 { margin: 0 0 4px; font-size: 22px; }
+              .muted { color: #666; font-size: 12px; }
+              .meta { margin: 20px 0; line-height: 1.6; }
+              table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+              th, td { padding: 8px 4px; border-bottom: 1px solid #ddd; text-align: left; }
+              th { font-size: 12px; text-transform: uppercase; }
+              .number { text-align: right; white-space: nowrap; }
+              .totals { margin-left: auto; width: min(280px, 100%); }
+              .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+              .total { border-top: 1px solid #222; margin-top: 6px; padding-top: 8px !important; font-weight: 700; }
+              @media print { body { margin: 16mm; } }
+            </style>
+          </head>
+          <body>
+            <h1>${escape(CONFIG.appName)} — Order Receipt</h1>
+            <div class="muted">Order ${escape(order.id)} · ${escape(Format.dateTime(order.createdAt))}</div>
+            <div class="meta">
+              <strong>Customer:</strong> ${escape(order.userName || 'Guest')}<br>
+              <strong>Delivery:</strong> ${delivery}<br>
+              <strong>Address:</strong> ${address}<br>
+              <strong>Payment:</strong> ${escape(order.paymentMethod || '—')} · ${escape(order.paymentStatus || '—')}
+            </div>
+            <table>
+              <thead><tr><th>Item</th><th class="number">Qty</th><th class="number">Amount</th></tr></thead>
+              <tbody>${items || '<tr><td colspan="3">No items</td></tr>'}</tbody>
+            </table>
+            <div class="totals">
+              <div><span>Subtotal</span><span>${escape(Format.currency(order.subtotal))}</span></div>
+              ${order.discount ? `<div><span>Discount${order.promoCode ? ` (${escape(order.promoCode)})` : ''}</span><span>−${escape(Format.currency(order.discount))}</span></div>` : ''}
+              <div><span>Delivery</span><span>${order.deliveryFee === 0 ? 'FREE' : escape(Format.currency(order.deliveryFee))}</span></div>
+              <div class="total"><span>Total</span><span>${escape(Format.currency(order.total))}</span></div>
+            </div>
+          </body>
+        </html>`;
+
+      try {
+        document.body.appendChild(frame);
+        const printWindow = frame.contentWindow;
+        if (!printWindow) throw new Error('Print frame is unavailable');
+        printWindow.addEventListener('afterprint', () => frame.remove(), { once: true });
+        printWindow.document.open();
+        printWindow.document.write(receiptHtml);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+      } catch (err) {
+        frame.remove();
+        console.error('Print order receipt failed:', err);
+        Components.toast('Could not open the print dialog. Please try again.', 'error');
+      }
     }
   }
 
