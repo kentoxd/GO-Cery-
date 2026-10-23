@@ -114,6 +114,48 @@ service cloud.firestore {
       }
     }
 
+    match /orderChats/{orderId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.orderId == orderId
+        && get(orderRef(orderId)).data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'orderId', 'userId', 'userName', 'lastMessage', 'lastMessageAt',
+          'lastSenderRole', 'unreadForAdmin', 'unreadForUser'
+        ])
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessageAt is string
+        && request.resource.data.lastSenderRole == ''
+        && request.resource.data.unreadForAdmin == 0
+        && request.resource.data.unreadForUser == 0;
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && resource.data.userId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['lastMessage', 'lastMessageAt', 'lastSenderRole', 'unreadForAdmin', 'unreadForUser'])
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastSenderRole'])
+                || request.resource.data.lastSenderRole == 'user'));
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAdmin()
+          || (isSignedIn()
+              && get(orderRef(orderId)).data.userId == request.auth.uid);
+        allow create: if isSignedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.senderRole == (isAdmin() ? 'admin' : 'user')
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && (
+            isAdmin()
+            || get(/databases/$(database)/documents/orderChats/$(orderId)).data.userId == request.auth.uid
+          );
+        allow update, delete: if false;
+      }
+    }
+
     match /loyalty/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow write: if isAdmin() ||
